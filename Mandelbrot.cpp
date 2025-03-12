@@ -17,7 +17,7 @@ unsigned int mandelbrot(double x, double y) {
 
 int main(){
 	sf::RenderWindow window(sf::VideoMode({ 800, 600 }), "Mandelbrot");
-	sf::Image image;
+	sf::Image image({ 800, 600 }, sf::Color::Black);
 	unsigned int iter;
 	unsigned int red;
 	unsigned int green;
@@ -36,16 +36,16 @@ int main(){
 		window.clear();
 		for (unsigned int x = 0; x < 800; x++) {
 			for (unsigned int y = 0; y < 600; y++) {
-				iter = mandelbrot(x / 100.0 - 2.0, y / 100.0 - 1.5);
-				red = iter % 255;
-				green = iter * 2 % 255;
-				blue = iter * 4 % 255;
+				iter = mandelbrot(x, y);
+				red = 255 - (iter % 255);
+				green = 255 - (iter * 2 % 255);
+				blue = 255 - (iter * 4 % 255);
 				image.setPixel({ x, y }, sf::Color(red, green, blue, 255));
 			}
 		}
 		sf::Texture tt(image);
 		sf::Sprite sprite(tt);
-		window.draw(sprite);
+		window.draw(sprite, sprite.getTransform());
 		window.display();
     }
 
