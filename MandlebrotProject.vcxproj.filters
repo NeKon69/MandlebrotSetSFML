@@ -15,8 +15,8 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Mandelbrot.cpp">
+    <CudaCompile Include="Mandelbrot.cu">
       <Filter>Source Files</Filter>
-    </ClCompile>
+    </CudaCompile>
   </ItemGroup>
 </Project>
