@@ -1,4 +1,5 @@
 #include "CUDA_ComputationFunctions.cuh"
+#include <cuda_runtime.h>  
 #include <vector>
 #include <cmath>
 #include <iostream>
@@ -7,7 +8,7 @@ inline static void cudaCheckError() {
     cudaError_t error = cudaGetLastError();
     if (error != cudaSuccess) {
         std::cerr << "CUDA Error: " << cudaGetErrorString(error) << " in " << __FILE__ << ":" << __LINE__ << std::endl;
-        exit(EXIT_FAILURE); // Or handle the error in a more graceful way
+        exit(EXIT_FAILURE);
     }
 }
 
@@ -80,7 +81,7 @@ std::vector<sf::Color> createHSVPalette(int numColors) {
  * @param size The scaling factor (should be 2 for 4x SSAA).
  * @return sf::Image The anti-aliased, low-resolution image.
  */
-__global__
+__global__ 
 void ANTIALIASING_SSAA4(unsigned char* src, unsigned char* dest, int src_width, int src_height, int dest_width, int dest_height) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;

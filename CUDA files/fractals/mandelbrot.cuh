@@ -1,5 +1,5 @@
 #pragma once
-#include "CUDA_ComputationFunctions.cuh"
+#include "../CUDA_ComputationFunctions.cuh"
 
 __global__ void fractal_rendering(
     unsigned char* pixels, int width, int height,

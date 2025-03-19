@@ -235,5 +235,4 @@ void FractalBase<Derived>::stop_dragging() {
     is_dragging = false;
 }
 
-// Explicit instantiation for mandelbrot
 template class FractalBase<fractals::mandelbrot>;

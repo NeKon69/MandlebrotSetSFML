@@ -1,5 +1,5 @@
 #pragma once
-#include "mandelbrot.cuh"
+#include "fractals/mandelbrot.cuh"
 #include "CUDA_ComputationFunctions.cuh"
 #include <SFML/Graphics.hpp>
 #include <cuda_runtime.h>

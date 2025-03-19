@@ -3,7 +3,7 @@
 #include <iostream>
 #include <thread>
 
-
+template class FractalBase<fractals::mandelbrot>;
 void main_thread() {
     render_state curr_qual = render_state::good;
     render_state prev_qual = render_state::good;
