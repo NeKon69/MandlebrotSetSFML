@@ -120,19 +120,26 @@ void main_thread() {
             std::cout << "Mouse pos: " << mouse.x << ", " << mouse.y << std::endl;
             drawen = true;
 
-            double mandel_mouse_x = mouse.x; 
-            double mandel_mouse_y = mouse.y; 
+            std::cout << "Mandelbrot: offset=(" << mandelbrot.get_x_offset() 
+          << ", " << mandelbrot.get_y_offset() 
+          << "), zoom=(" << mandelbrot.get_zoom_x() 
+          << ", " << mandelbrot.get_zoom_y() 
+          << "), scale=" << mandelbrot.get_zoom_scale() << "\n";
 
-            double cx = mandelbrot.get_x_offset() + (mandel_mouse_x / 800.0) * (4.0 / (mandelbrot.get_zoom_x() * mandelbrot.get_zoom_scale()));
-            double cy = mandelbrot.get_y_offset() + (mandel_mouse_y / 600.0) * (3.0 / (mandelbrot.get_zoom_y() * mandelbrot.get_zoom_scale()));
+            double mandel_view_width = 4.0 / (mandelbrot.get_zoom_x() * mandelbrot.get_zoom_scale());
+            double mandel_view_height = 3.0 / (mandelbrot.get_zoom_y() * mandelbrot.get_zoom_scale());
 
-            julia_set.render(render_state::good, mandelbrot.get_x_offset(), mandelbrot.get_y_offset(),
-                mandelbrot.get_zoom_x(), mandelbrot.get_zoom_y(),
-                cx, cy);
+            double cx = mandelbrot.get_x_offset() + (mouse.x / 800.0) * mandel_view_width;
+            double cy = mandelbrot.get_y_offset() + (mouse.y / 600.0) * mandel_view_height;
 
-			julia_set.render(render_state::good, mandelbrot.get_x_offset(), mandelbrot.get_y_offset(), 
-                             mandelbrot.get_zoom_x(), mandelbrot.get_zoom_y(), 
-                            ((mouse.x / 800.0) * 4.0) - 2.0, ((mouse.y / 600.0) * 3.0) - 1.5);
+            std::cout << "view_width: " << mandel_view_width
+                << " | view_height: " << mandel_view_height
+                << " | c: (" << cx << ", " << cy << ")\n";
+
+            std::cout << "c = (" << cx << ", " << cy << ")\n";
+
+            julia_set.render(render_state::good, cx, cy);
+
 
             julia_set.setPosition({ float(window.getSize().x - 800), 0 });
 

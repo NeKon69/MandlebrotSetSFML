@@ -100,8 +100,6 @@ public:
 
     void render(
         render_state quality,
-        double mandel_x_offset, double mandel_y_offset,
-        double mandel_zoom_x, double mandel_zoom_y,
         double mouse_x, double mouse_y
     );
 

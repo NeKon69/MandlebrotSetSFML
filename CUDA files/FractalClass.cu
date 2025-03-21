@@ -170,8 +170,6 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
 
 void FractalBase<fractals::julia>::render(
     render_state quality,
-    double mandel_x_offset, double mandel_y_offset,
-    double mandel_zoom_x, double mandel_zoom_y,
     double cx, double cy
 ) {
     cudaEvent_t event;
@@ -179,6 +177,16 @@ void FractalBase<fractals::julia>::render(
 
     int new_width, new_height;
     double new_zoom_scale;
+
+    const double julia_width = 4.0;
+    const double julia_height = 3.0;
+
+    zoom_x = width / julia_width;
+    zoom_y = height / julia_height;
+
+    // Фиксированные смещения
+    x_offset = -2.0;
+    y_offset = -1.5;
 
     if (quality == render_state::good) {
         new_width = 800;
@@ -222,6 +230,9 @@ void FractalBase<fractals::julia>::render(
         height = new_height;
     }
 
+    x_offset = -2.0;
+    y_offset = -1.5;
+
     double render_zoom_x = zoom_x * zoom_scale;
     double render_zoom_y = zoom_y * zoom_scale;
 
@@ -234,7 +245,7 @@ void FractalBase<fractals::julia>::render(
         cudaDeviceSynchronize();
     running_other_core = true;
 
-    fractal_rendering << <dimBlock, dimGrid >> > (
+    fractal_rendering <<<dimBlock, dimGrid>>> (
         d_pixels, width, height, render_zoom_x, render_zoom_y,
         x_offset, y_offset, d_palette, paletteSize,
         max_iterations, stopFlagDevice, cx, cy
