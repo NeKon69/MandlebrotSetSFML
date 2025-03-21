@@ -1,5 +1,6 @@
 #pragma once
 #include "fractals/mandelbrot.cuh"
+#include "fractals/julia.cuh"
 #include "CUDA_ComputationFunctions.cuh"
 #include <SFML/Graphics.hpp>
 #include <cuda_runtime.h>
@@ -8,6 +9,8 @@ namespace fractals {
 	struct mandelbrot{};
     struct julia{};
 };
+
+extern bool running_other_core;
 
 enum class render_state {
 	good,
@@ -49,6 +52,9 @@ protected:
     bool* stopFlagDevice;
 
     double zoom_scale;
+
+    unsigned int width;
+    unsigned int height;
 public:
     FractalBase();
     ~FractalBase();
@@ -56,8 +62,21 @@ public:
     /*@returns amount of max_iterations*/
     unsigned int get_max_iters();
 
+
+
     /*@returns mouse currently dragging state*/
     bool get_is_dragging();
+
+    double get_x_offset();
+
+	double get_y_offset();
+
+	double get_zoom_x();
+
+	double get_zoom_y();
+
+    double get_zoom_scale();
+
 
     /*@brief sets max_iterations to new given number
     **@param max_iters
@@ -78,6 +97,13 @@ public:
      * @param height Image height.
      */
     void render(render_state quality);
+
+    void render(
+        render_state quality,
+        double mandel_x_offset, double mandel_y_offset,
+        double mandel_zoom_x, double mandel_zoom_y,
+        double mouse_x, double mouse_y
+    );
 
     /**
      * @brief Draws the rendered fractal image onto the SFML render target.

@@ -48,5 +48,3 @@ extern void HSVtoRGB(double h, double s, double v, unsigned int& r, unsigned int
 extern std::vector<sf::Color> createHSVPalette(int numColors);
 
 extern std::vector<sf::Color> palette;
-extern unsigned int width;
-extern unsigned int height;

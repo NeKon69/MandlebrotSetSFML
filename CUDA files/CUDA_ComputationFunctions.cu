@@ -92,7 +92,7 @@ void ANTIALIASING_SSAA4(unsigned char* src, unsigned char* dest, int src_width, 
             for (int j = 0; j < 2; ++j) {
                 int src_x = x * 2 + i;
                 int src_y = y * 2 + j;
-                if (src_x < src_width && src_y < src_height) { // Проверяем границы исходного изображения
+                if (src_x < src_width && src_y < src_height) {
                     int src_index = (src_y * src_width + src_x) * 4;
                     r += src[src_index];
                     g += src[src_index + 1];
@@ -104,11 +104,9 @@ void ANTIALIASING_SSAA4(unsigned char* src, unsigned char* dest, int src_width, 
         dest[dest_index] = r / 4;
         dest[dest_index + 1] = g / 4;
         dest[dest_index + 2] = b / 4;
-        dest[dest_index + 3] = 255; // Альфа-канал
+        dest[dest_index + 3] = 255;
     }
 }
 
 std::vector<sf::Color> palette(createHSVPalette(200000));
 
-unsigned int width = 400;
-unsigned int height = 300;
