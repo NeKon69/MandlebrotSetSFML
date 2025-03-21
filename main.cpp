@@ -3,13 +3,13 @@
 #include <iostream>
 #include <thread>
 
-template class FractalBase<fractals::mandelbrot>;
 void main_thread() {
     render_state curr_qual = render_state::good;
     render_state prev_qual = render_state::good;
+
+   
+
     sf::RenderWindow window(sf::VideoMode({ 800, 600 }), "Mandelbrot");
-    sf::Image image({ 1600, 1200 }, sf::Color::Black);
-    sf::Image compressed({ 800, 600 }, sf::Color::Black);
     sf::Clock timer;
 
     bool is_dragging = false;
@@ -30,10 +30,13 @@ void main_thread() {
                 if (button->scancode == sf::Keyboard::Scancode::Escape) {
                     window.close();
                 }
+                else if (button->scancode == sf::Keyboard::Scancode::R) {
+                    mandelbrot.set_max_iters(mandelbrot.get_max_iters() * 2);
+                }
             }
-
+            
             if (const auto* mouseWheelScrolled = event->getIf<sf::Event::MouseWheelScrolled>()) {
-
+                
                 curr_qual = render_state::good;
                 mandelbrot.handleZoom(mouseWheelScrolled->delta, mouse);
             }
@@ -60,6 +63,8 @@ void main_thread() {
         }
 
         if (curr_qual != render_state::best || prev_qual != render_state::best) {
+            window.clear();
+
 			prev_qual = curr_qual;
             std::string quality = curr_qual == render_state::best ? "Best" : "Good";
 

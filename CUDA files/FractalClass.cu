@@ -77,14 +77,12 @@ void FractalBase<Derived>::render(render_state quality) {
     if (quality == render_state::good) {
         new_width = 800;
         new_height = 600;
-        max_iterations = 500;
         antialiasing = false;
         new_zoom_scale = 1.0;
     }
     else { // render_state::best
         new_width = 1600;
         new_height = 1200;
-        max_iterations = 500;
         antialiasing = true;
         new_zoom_scale = 2.0;
     }
