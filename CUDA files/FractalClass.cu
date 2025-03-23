@@ -170,9 +170,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
 
 void FractalBase<fractals::julia>::render(
     render_state quality,
-    double mandel_x_offset, double mandel_y_offset,
-    double mandel_zoom_x, double mandel_zoom_y,
-    double cx, double cy
+    double zx, double zy
 ) {
     cudaEvent_t event;
     cudaEventCreate(&event);
@@ -186,7 +184,7 @@ void FractalBase<fractals::julia>::render(
         antialiasing = false;
         new_zoom_scale = 1.0;
     }
-    else {
+    else { // render_state::best
         new_width = 1600;
         new_height = 1200;
         antialiasing = true;
@@ -194,15 +192,15 @@ void FractalBase<fractals::julia>::render(
     }
 
     if (width != new_width || height != new_height) {
-        double center_x = x_offset + (width / (zoom_x * zoom_scale)) / 2.0;
-        double center_y = y_offset + (height / (zoom_y * zoom_scale)) / 2.0;
+        double center_x = x_offset + (width / (zoom_x * zoom_scale)) / new_width / width;
+        double center_y = y_offset + (height / (zoom_y * zoom_scale)) / new_height / height;
 
         zoom_scale = new_zoom_scale;
         width = new_width;
         height = new_height;
 
-        x_offset = center_x - (width / (zoom_x * zoom_scale)) / 2.0;
-        y_offset = center_y - (height / (zoom_y * zoom_scale)) / 2.0;
+        x_offset = center_x - (width / (zoom_x * zoom_scale)) / new_width / width;
+        y_offset = center_y - (height / (zoom_y * zoom_scale)) / new_height / height;
 
         delete[] pixels;
         pixels = new unsigned char[new_width * new_height * 4];
@@ -234,10 +232,10 @@ void FractalBase<fractals::julia>::render(
         cudaDeviceSynchronize();
     running_other_core = true;
 
-    fractal_rendering << <dimBlock, dimGrid >> > (
+    fractal_rendering <<<dimBlock, dimGrid>>> (
         d_pixels, width, height, render_zoom_x, render_zoom_y,
         x_offset, y_offset, d_palette, paletteSize,
-        max_iterations, stopFlagDevice, cx, cy
+        max_iterations, stopFlagDevice, zx, zy
         );
 
     cudaEventRecord(event);
@@ -281,6 +279,7 @@ void FractalBase<Derived>::draw(sf::RenderTarget& target, sf::RenderStates state
 
         image = sf::Image({ 800, 600 }, compressed);
         cudaFree(pix_dest);
+        delete[] compressed;
     }
     else {
         image = img1;
