@@ -11,12 +11,16 @@ void main_thread() {
 
     sf::RenderWindow window(sf::VideoMode({ 1920, 1080 }), "Fractals");
 
+    double zx, zy;
+
     bool drawen = false;
 
     sf::Clock timer;
     sf::Clock timer_julia;
 
     bool is_dragging = false;
+
+	bool julia_render = false;
 
     FractalBase<fractals::mandelbrot> mandelbrot;
     FractalBase<fractals::julia> julia_set;
@@ -27,7 +31,11 @@ void main_thread() {
     sf::Vector2i mouse;
     while (window.isOpen()) {
         while (const auto event = window.pollEvent()) {
-            if (const auto* mm = event->getIf<sf::Event::MouseMoved>()) mouse = mm->position;
+            if (const auto* mm = event->getIf<sf::Event::MouseMoved>()) {
+                if(mouse.x < 800 && mouse.y < 600)
+					mouse_moved = true;
+                mouse = mm->position;
+            } 
 
             if (event->is<sf::Event::Closed>()) {
                 window.close();
@@ -50,19 +58,20 @@ void main_thread() {
                 }
 				else if (mouse.x > window.getSize().x - 800 && mouse.y < 600) {
 					julia_set.handleZoom(mouseWheelScrolled->delta, mouse);
-                    mouse_moved = true;
+                    julia_render = true;
 				}
             }
 
             if (const auto* mouseButtonPressed = event->getIf<sf::Event::MouseButtonPressed>()) {
                 if (mouseButtonPressed->button == sf::Mouse::Button::Left) {
                     if (mouse.x < 800 && mouse.y < 600) {
+                        mouse_moved = true;
                         curr_qual = render_state::good;
                         mandelbrot.start_dragging(mouse);
                     }
 					else if (mouse.x > window.getSize().x - 800 && mouse.y < 600) {
 						julia_set.start_dragging(mouse);
-                        mouse_moved = true;
+                        julia_render = true;
 					}
                 }
             }
@@ -86,9 +95,9 @@ void main_thread() {
                     }
                 }
                 else if(mouse.x > window.getSize().x - 800 && mouse.y < 600 && julia_set.get_is_dragging()) {
-                    mouse_moved = true;
 					if (julia_set.get_is_dragging()) {
 						julia_set.dragging({ mouse.x, mouse.y });
+                        julia_render = true;
 					}
 				}
             }
@@ -126,19 +135,15 @@ void main_thread() {
           << ", " << mandelbrot.get_zoom_y() 
           << "), scale=" << mandelbrot.get_zoom_scale() << "\n";
 
-            double mandel_view_width = 4.0 / (mandelbrot.get_zoom_x() * mandelbrot.get_zoom_scale());
-            double mandel_view_height = 3.0 / (mandelbrot.get_zoom_y() * mandelbrot.get_zoom_scale());
 
-            double cx = mandelbrot.get_x_offset() + (mouse.x / 800.0) * mandel_view_width;
-            double cy = mandelbrot.get_y_offset() + (mouse.y / 600.0) * mandel_view_height;
+            zx = -(mandelbrot.get_x_offset() - (mouse.x / mandelbrot.get_zoom_x()));
 
-            std::cout << "view_width: " << mandel_view_width
-                << " | view_height: " << mandel_view_height
-                << " | c: (" << cx << ", " << cy << ")\n";
+            zy = -(mandelbrot.get_y_offset() - (mouse.y / mandelbrot.get_zoom_y()));
 
-            std::cout << "c = (" << cx << ", " << cy << ")\n";
 
-            julia_set.render(render_state::good, cx, cy);
+            std::cout << "c = (" << zx << ", " << zy << ")\n";
+             
+            julia_set.render(render_state::good, zx, zy);
 
 
             julia_set.setPosition({ float(window.getSize().x - 800), 0 });
@@ -156,6 +161,11 @@ void main_thread() {
             std::cout << "Julia set " << "(" << "Best" << ")" << " was drew in : " << time.asMilliseconds() << std::endl;
 
 			mouse_moved = false;
+		}
+
+        else if(julia_render) {
+			julia_set.render(render_state::good, zx, zy);
+			julia_render = false;
 		}
     }
 }
