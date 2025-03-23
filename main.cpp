@@ -26,6 +26,8 @@ void main_thread() {
     FractalBase<fractals::julia> julia_set;
     double max_iters = mandelbrot.get_max_iters();
 
+    bool block_julia = false;
+
     bool mouse_moved = true;
 
     sf::Vector2i mouse;
@@ -49,6 +51,10 @@ void main_thread() {
                     if (mouse.x < 800 && mouse.y < 600)
                         mandelbrot.set_max_iters(mandelbrot.get_max_iters() * 2);
                 }
+                else if(button->scancode == sf::Keyboard::Scancode::S) {
+                    if (mouse.x < 800 && mouse.y < 600)
+                        block_julia = !block_julia;
+				}
             }
             
             if (const auto* mouseWheelScrolled = event->getIf<sf::Event::MouseWheelScrolled>()) {
@@ -125,23 +131,11 @@ void main_thread() {
             window.display();
         }
 
-        if(mouse_moved) {
-            std::cout << "Mouse pos: " << mouse.x << ", " << mouse.y << std::endl;
+        if(mouse_moved && !block_julia) {
             drawen = true;
-
-            std::cout << "Mandelbrot: offset=(" << mandelbrot.get_x_offset() 
-          << ", " << mandelbrot.get_y_offset() 
-          << "), zoom=(" << mandelbrot.get_zoom_x() 
-          << ", " << mandelbrot.get_zoom_y() 
-          << "), scale=" << mandelbrot.get_zoom_scale() << "\n";
-
-
             zx = -(mandelbrot.get_x_offset() - (mouse.x / mandelbrot.get_zoom_x()));
 
             zy = -(mandelbrot.get_y_offset() - (mouse.y / mandelbrot.get_zoom_y()));
-
-
-            std::cout << "c = (" << zx << ", " << zy << ")\n";
              
             julia_set.render(render_state::good, zx, zy);
 
@@ -158,15 +152,24 @@ void main_thread() {
 
             auto time = timer_julia.restart();
 
-            std::cout << "Julia set " << "(" << "Best" << ")" << " was drew in : " << time.asMilliseconds() << std::endl;
-
 			mouse_moved = false;
 		}
 
-        else if(julia_render) {
-			julia_set.render(render_state::good, zx, zy);
+        else if (julia_render) {
+			julia_set.render(render_state::best, zx, zy);
+            julia_set.setPosition({ float(window.getSize().x - 800), 0 });
+
+            window.clear();
+
+            window.draw(julia_set);
+            window.draw(mandelbrot);
+
+
+            window.display();
+
 			julia_render = false;
-		}
+        }
+
     }
 }
 

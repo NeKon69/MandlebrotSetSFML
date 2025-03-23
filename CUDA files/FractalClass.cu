@@ -27,11 +27,15 @@ template <typename Derived>
 FractalBase<Derived>::FractalBase()
     : max_iterations(300), basic_zoom_x(240.0f), basic_zoom_y(240.0f),
     zoom_x(basic_zoom_x), zoom_y(basic_zoom_y),
-    x_offset(3.5f), y_offset(2.5f),
+    x_offset(3.f), y_offset(1.825f),
     zoom_factor(1.0f), zoom_speed(0.1f),
     pixels(new unsigned char[width * height * 4]), paletteSize(palette.size()),
     zoom_scale(1.0f), width(400), height(300)
 {
+    if (std::is_same<Derived, fractals::julia>::value) {
+        x_offset = 1.8f;
+		y_offset = 1.25f;
+    }
     cudaMalloc(&stopFlagDevice, sizeof(bool));
     bool flag = true;
     cudaMemcpy(stopFlagDevice, &flag, sizeof(bool), cudaMemcpyHostToDevice);
@@ -317,7 +321,6 @@ void FractalBase<Derived>::handleZoom(float wheel_delta, const sf::Vector2i mous
     x_offset = old_x_offset + (image_mouse_x / zoom_x - image_mouse_x / old_zoom_x);
     y_offset = old_y_offset + (image_mouse_y / zoom_y - image_mouse_y / old_zoom_y);
 
-    std::cout << "Zoom Factor: " << zoom_factor << ", Offset: (" << x_offset << ", " << y_offset << ")" << std::endl;
 }
 
 template <typename Derived>
