@@ -8,7 +8,7 @@ inline __device__ double complex_mult_real(double real1, double imag1, double re
 }
 
 inline __device__ double complex_mult_imag(double real1, double imag1, double real2, double imag2) {
-    return real1 * imag2 + imag1 * real2;
+    return 2 * real1 * imag2;
 }
 
 inline __device__ double dev_abs(double x) {

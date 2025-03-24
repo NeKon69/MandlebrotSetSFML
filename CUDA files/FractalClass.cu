@@ -25,16 +25,16 @@ sf::Image stretchImageNearestNeighbor(const sf::Image& source, unsigned int targ
 
 template <typename Derived>
 FractalBase<Derived>::FractalBase()
-    : max_iterations(300), basic_zoom_x(240.0f), basic_zoom_y(240.0f),
+    : max_iterations(300), basic_zoom_x(240.0), basic_zoom_y(240.0),
     zoom_x(basic_zoom_x), zoom_y(basic_zoom_y),
-    x_offset(3.f), y_offset(1.825f),
-    zoom_factor(1.0f), zoom_speed(0.1f),
+    x_offset(3.0), y_offset(1.825),
+    zoom_factor(1.0), zoom_speed(0.1),
     pixels(new unsigned char[width * height * 4]), paletteSize(palette.size()),
-    zoom_scale(1.0f), width(400), height(300)
+    zoom_scale(1.0), width(400), height(300)
 {
     if (std::is_same<Derived, fractals::julia>::value) {
-        x_offset = 1.8f;
-		y_offset = 1.25f;
+        x_offset = 1.8;
+		y_offset = 1.25;
     }
     cudaMalloc(&stopFlagDevice, sizeof(bool));
     bool flag = true;

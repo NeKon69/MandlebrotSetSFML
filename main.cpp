@@ -6,10 +6,20 @@
 void main_thread() {
     render_state curr_qual = render_state::good;
     render_state prev_qual = render_state::good;
+    render_state prev_qual_jul = render_state::good;
+    render_state curr_qual_jul = render_state::good;
 
    
 
     sf::RenderWindow window(sf::VideoMode({ 1920, 1080 }), "Fractals");
+
+    sf::Font font;
+    bool state = font.openFromFile("C:\\Windows\\Fonts\\ariblk.ttf");
+    if (!state)
+        return;
+    sf::Text text(font);
+    text.setString("0");
+
 
     double zx, zy;
 
@@ -17,6 +27,9 @@ void main_thread() {
 
     sf::Clock timer;
     sf::Clock timer_julia;
+    sf::Clock fps_clock;
+
+    float fps = 0;
 
     bool is_dragging = false;
 
@@ -27,6 +40,7 @@ void main_thread() {
     double max_iters = mandelbrot.get_max_iters();
 
     bool block_julia = false;
+    
 
     bool mouse_moved = true;
 
@@ -64,7 +78,7 @@ void main_thread() {
                 }
 				else if (mouse.x > window.getSize().x - 800 && mouse.y < 600) {
 					julia_set.handleZoom(mouseWheelScrolled->delta, mouse);
-                    julia_render = true;
+                    curr_qual_jul = render_state::good;
 				}
             }
 
@@ -77,7 +91,7 @@ void main_thread() {
                     }
 					else if (mouse.x > window.getSize().x - 800 && mouse.y < 600) {
 						julia_set.start_dragging(mouse);
-                        julia_render = true;
+                        curr_qual_jul = render_state::good;
 					}
                 }
             }
@@ -103,11 +117,13 @@ void main_thread() {
                 else if(mouse.x > window.getSize().x - 800 && mouse.y < 600 && julia_set.get_is_dragging()) {
 					if (julia_set.get_is_dragging()) {
 						julia_set.dragging({ mouse.x, mouse.y });
-                        julia_render = true;
+                        curr_qual_jul = render_state::good;
 					}
 				}
             }
         }
+        ++fps;
+
 
         if (curr_qual != render_state::best || prev_qual != render_state::best) {
 			prev_qual = curr_qual;
@@ -119,8 +135,9 @@ void main_thread() {
             window.draw(mandelbrot);
             if(drawen)
                 window.draw(julia_set);
+            window.draw(text);
 
-            auto time = timer.restart();
+            auto time = timer.restart();;
 			
             std::cout << "Mandelbrot set " << "(" << quality << ")" <<  " was drew in : " << time.asMilliseconds() << std::endl;
 
@@ -146,29 +163,56 @@ void main_thread() {
 
             window.draw(julia_set);
             window.draw(mandelbrot);
+            window.draw(text);
 			
-
 			window.display();
 
             auto time = timer_julia.restart();
+            
 
 			mouse_moved = false;
 		}
 
-        else if (julia_render) {
-			julia_set.render(render_state::best, zx, zy);
+        else if (curr_qual_jul != render_state::best || prev_qual_jul != render_state::best) {
+            prev_qual_jul = curr_qual_jul;
+            std::string quality = curr_qual_jul == render_state::best ? "Best" : "Good";
+
+			julia_set.render(curr_qual_jul, zx, zy);
             julia_set.setPosition({ float(window.getSize().x - 800), 0 });
 
             window.clear();
 
+            
             window.draw(julia_set);
             window.draw(mandelbrot);
+            window.draw(text);
 
+            
+
+            std::cout << "julia set " << "(" << quality << ")\n";
 
             window.display();
 
-			julia_render = false;
+            if (quality == "Good") {
+                curr_qual_jul = render_state::best;
+            }
         }
+        else {
+			window.clear();
+			window.draw(mandelbrot);
+			if (drawen)
+				window.draw(julia_set);
+			window.draw(text);
+			window.display();
+        }
+
+        if(fps_clock.getElapsedTime().asSeconds() > 0.2f) {
+            float elapsed = fps_clock.getElapsedTime().asSeconds();
+            text.setString(std::to_string(fps / elapsed));
+            text.setPosition({ 10, 10 });
+			fps = 0;
+			fps_clock.restart();
+		}
 
     }
 }
