@@ -49,6 +49,10 @@ protected:
     unsigned char* pixels;
     size_t ssaa_limit_dst = 0;
 
+	unsigned char* ssaa_buffer;
+
+    unsigned char* compressed;
+
 	bool is_paused = false;
 
 	render_state state = render_state::good;

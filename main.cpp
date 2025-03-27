@@ -38,6 +38,7 @@ void main_thread() {
 
     FractalBase<fractals::mandelbrot> mandelbrot;
     FractalBase<fractals::julia> julia_set;
+    julia_set.setPosition({float(window.getSize().x - 800), 0.f});
     double max_iters = mandelbrot.get_max_iters();
 
     bool block_julia = false;
@@ -131,7 +132,7 @@ void main_thread() {
 			prev_qual = curr_qual;
             std::string quality = curr_qual == render_state::best ? "Best" : curr_qual == render_state::good ? "Good" : "Bad";
             auto start = std::chrono::high_resolution_clock::now();
-            mandelbrot.render(render_state::best);
+            mandelbrot.render(curr_qual);
             auto end = std::chrono::high_resolution_clock::now();
             auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
             std::cout << "Time needed to render: " << diff.count() << "\n";
