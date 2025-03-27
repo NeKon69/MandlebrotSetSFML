@@ -34,7 +34,7 @@ FractalBase<Derived>::FractalBase()
 {
     if (std::is_same<Derived, fractals::julia>::value) {
         x_offset = 1.8;
-		y_offset = 1.25;
+        y_offset = 1.25;
     }
     cudaMalloc(&stopFlagDevice, sizeof(bool));
     bool flag = true;
@@ -43,7 +43,13 @@ FractalBase<Derived>::FractalBase()
     cudaMalloc(&d_palette, palette.size() * sizeof(sf::Color));
     cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
 
-    cudaMallocManaged(&d_pixels, width * height * sizeof(uint32_t));
+    cudaMallocManaged(&d_pixels, 1600 * 1200 * 4 * sizeof(uint32_t));
+
+    cudaMallocHost(&pixels, 1600 * 1200 * 4 * sizeof(char4));
+    
+    cudaMalloc(&ssaa_buffer, 800 * 600 * 4 * sizeof(char4));
+
+	cudaMallocHost(&compressed, 800 * 600 * 4 * sizeof(char4));
 }
 
 template <typename Derived>
@@ -51,7 +57,7 @@ FractalBase<Derived>::~FractalBase() {
     cudaFree(d_palette);
     cudaFree(d_pixels);
     cudaFree(stopFlagDevice);
-    delete[] pixels;
+    cudaFreeHost(pixels);
 }
 
 template <typename Derived>
@@ -111,7 +117,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
     if (width != new_width || height != new_height) {
         double center_x = x_offset + (width / (zoom_x * zoom_scale)) / 2.0;
         double center_y = y_offset + (height / (zoom_y * zoom_scale)) / 2.0;
-        
+
         zoom_scale = new_zoom_scale;
         width = new_width;
         height = new_height;
@@ -119,19 +125,9 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
         x_offset = center_x - (width / (zoom_x * zoom_scale)) / 2.0;
         y_offset = center_y - (height / (zoom_y * zoom_scale)) / 2.0;
 
-        delete[] pixels;
-        pixels = new unsigned char[new_width * new_height * 4];
-
         bool flag = true;
         cudaMemcpy(stopFlagDevice, &flag, sizeof(bool), cudaMemcpyHostToDevice);
         cudaDeviceSynchronize();
-
-        cudaFree(d_pixels);
-        cudaError_t allocErr = cudaMalloc(&d_pixels, new_width * new_height * sizeof(uint32_t));
-        if (allocErr != cudaSuccess) {
-            std::cerr << "CUDA Memory Allocation Error: " << cudaGetErrorString(allocErr) << std::endl;
-            exit(EXIT_FAILURE);
-        }
 
         width = new_width;
         height = new_height;
@@ -145,11 +141,13 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
         (width + dimBlock.x - 1) / dimBlock.x,
         (height + dimBlock.y - 1) / dimBlock.y
     );
-    if(running_other_core)
+    if (running_other_core)
         cudaDeviceSynchronize();
     running_other_core = true;
+
+	size_t len = width * height * 4;
     fractal_rendering <<<dimBlock, dimGrid>>> (
-        d_pixels, width, height, render_zoom_x, render_zoom_y,
+        d_pixels, len, width, height, render_zoom_x, render_zoom_y,
         x_offset, y_offset, d_palette, paletteSize,
         max_iterations, stopFlagDevice
         );
@@ -167,7 +165,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
 
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
-        std::cout << cudaGetErrorString(err);
+        std::cout << "fractal mandelbrot: " << cudaGetErrorString(err) << "\n";
     }
 }
 
@@ -196,29 +194,19 @@ void FractalBase<fractals::julia>::render(
     }
 
     if (width != new_width || height != new_height) {
-        double center_x = x_offset + (width / (zoom_x * zoom_scale)) / new_width / width;
-        double center_y = y_offset + (height / (zoom_y * zoom_scale)) / new_height / height;
+        double center_x = x_offset + (width / (zoom_x * zoom_scale)) / 2.0;
+        double center_y = y_offset + (height / (zoom_y * zoom_scale)) / 2.0;
 
         zoom_scale = new_zoom_scale;
         width = new_width;
         height = new_height;
 
-        x_offset = center_x - (width / (zoom_x * zoom_scale)) / new_width / width;
-        y_offset = center_y - (height / (zoom_y * zoom_scale)) / new_height / height;
-
-        delete[] pixels;
-        pixels = new unsigned char[new_width * new_height * 4];
+        x_offset = center_x - (width / (zoom_x * zoom_scale)) / 2.0;
+        y_offset = center_y - (height / (zoom_y * zoom_scale)) / 2.0;
 
         bool flag = true;
         cudaMemcpy(stopFlagDevice, &flag, sizeof(bool), cudaMemcpyHostToDevice);
         cudaDeviceSynchronize();
-
-        cudaFree(d_pixels);
-        cudaError_t allocErr = cudaMalloc(&d_pixels, new_width * new_height * sizeof(uint32_t));
-        if (allocErr != cudaSuccess) {
-            std::cerr << "CUDA Memory Allocation Error: " << cudaGetErrorString(allocErr) << std::endl;
-            exit(EXIT_FAILURE);
-        }
 
         width = new_width;
         height = new_height;
@@ -236,8 +224,10 @@ void FractalBase<fractals::julia>::render(
         cudaDeviceSynchronize();
     running_other_core = true;
 
-    fractal_rendering <<<dimBlock, dimGrid>>> (
-        d_pixels, width, height, render_zoom_x, render_zoom_y,
+    size_t len = width * height * 4;
+
+    fractal_rendering<<<dimBlock, dimGrid>>>(
+        d_pixels, len, width, height, render_zoom_x, render_zoom_y,
         x_offset, y_offset, d_palette, paletteSize,
         max_iterations, stopFlagDevice, zx, zy
         );
@@ -255,7 +245,7 @@ void FractalBase<fractals::julia>::render(
 
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
-        std::cout << cudaGetErrorString(err) << std::endl;
+        std::cout << "fractal julia: " << cudaGetErrorString(err) << "\n";
     }
 }
 
@@ -263,30 +253,21 @@ void FractalBase<fractals::julia>::render(
 template <typename Derived>
 void FractalBase<Derived>::draw(sf::RenderTarget& target, sf::RenderStates states) const {
     cudaMemcpy(pixels, d_pixels, width * height * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost);
-    sf::Image img1({ width, height }, pixels);
-    sf::Image image;
+    sf::Image image({ width, height }, pixels);
     if (antialiasing) {
-        unsigned char* pix_dest;
-		cudaMalloc(&pix_dest, 800 * 600 * 4 * sizeof(unsigned char));
 
         dim3 dimBlock(64, 64);
         dim3 dimGrid(
             (width + dimBlock.x - 1) / dimBlock.x,
             (height + dimBlock.y - 1) / dimBlock.y);
-        if(running_other_core)
-			cudaDeviceSynchronize();
-        ANTIALIASING_SSAA4<<<dimBlock, dimGrid>>>(d_pixels, pix_dest, 1600, 1200, 800, 600);
+        if (running_other_core)
+            cudaDeviceSynchronize();
+        ANTIALIASING_SSAA4 << <dimBlock, dimGrid >> > (d_pixels, ssaa_buffer, 1600, 1200, 800, 600);
         cudaDeviceSynchronize();
 
-        unsigned char* compressed = new unsigned char[800 * 600 * 4];
-		cudaMemcpy(compressed, pix_dest, 800 * 600 * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost);
+        cudaMemcpy(compressed, ssaa_buffer, 800 * 600 * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost);
 
         image = sf::Image({ 800, 600 }, compressed);
-        cudaFree(pix_dest);
-        delete[] compressed;
-    }
-    else {
-        image = img1;
     }
 
     sf::Texture texture;

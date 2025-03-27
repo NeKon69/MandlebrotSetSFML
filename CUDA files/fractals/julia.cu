@@ -2,11 +2,15 @@
 #include <iostream>
 
 __global__ void fractal_rendering(
-	unsigned char* pixels, int width, int height,
+	unsigned char* pixels, size_t size_of_pixels, int width, int height,
 	double zoom_x, double zoom_y, double x_offset, double y_offset,
 	sf::Color* d_palette, int paletteSize, double maxIterations, bool* stopFlagDevice,
 	double cReal, double cImaginary) {
 	*stopFlagDevice = false;
+
+	size_t expected_size = width * height * 4;
+
+	float scale_factor = (float)size_of_pixels / expected_size;
 
 	int x = blockIdx.x * blockDim.x + threadIdx.x;
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -24,7 +28,6 @@ __global__ void fractal_rendering(
 			z_real = new_real;
 			z_imag = new_imag;
 			current_iteration++;
-
 			if (*stopFlagDevice) {
 				printf("Rendering: width=%d, height=%d, x=%f, y=%d\n", width, height, x, y);
 				return;
@@ -50,11 +53,14 @@ __global__ void fractal_rendering(
 			b = color.b;
 		}
 
-		int index = (y * width + x) * 4;
-		pixels[index] = r;
-		pixels[index + 1] = g;
-		pixels[index + 2] = b;
-		pixels[index + 3] = 255;
+		int base_index = (y * width + x) * 4;
+		for (int i = 0; i < scale_factor * 4; i += 4) {
+			int index = base_index + i;
+			pixels[index] = r;
+			pixels[index + 1] = g;
+			pixels[index + 2] = b;
+			pixels[index + 3] = 255;
+		}
 	}
 	*stopFlagDevice = false;
 }

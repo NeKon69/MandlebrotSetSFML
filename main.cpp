@@ -4,14 +4,15 @@
 #include <thread>
 
 void main_thread() {
-    render_state curr_qual = render_state::good;
-    render_state prev_qual = render_state::good;
+    render_state curr_qual = render_state::bad;
+    render_state prev_qual = render_state::bad;
     render_state prev_qual_jul = render_state::good;
     render_state curr_qual_jul = render_state::good;
 
    
 
     sf::RenderWindow window(sf::VideoMode({ 1920, 1080 }), "Fractals");
+    sf::RenderTexture buffer({1920, 1080});
 
     sf::Font font;
     bool state = font.openFromFile("C:\\Windows\\Fonts\\ariblk.ttf");
@@ -37,12 +38,14 @@ void main_thread() {
 
     FractalBase<fractals::mandelbrot> mandelbrot;
     FractalBase<fractals::julia> julia_set;
+    julia_set.setPosition({float(window.getSize().x - 800), 0.f});
     double max_iters = mandelbrot.get_max_iters();
 
     bool block_julia = false;
     
-
     bool mouse_moved = true;
+
+    window.setFramerateLimit(60);
 
     sf::Vector2i mouse;
     while (window.isOpen()) {
@@ -127,25 +130,38 @@ void main_thread() {
 
         if (curr_qual != render_state::best || prev_qual != render_state::best) {
 			prev_qual = curr_qual;
-            std::string quality = curr_qual == render_state::best ? "Best" : "Good";
-
+            std::string quality = curr_qual == render_state::best ? "Best" : curr_qual == render_state::good ? "Good" : "Bad";
+            auto start = std::chrono::high_resolution_clock::now();
             mandelbrot.render(curr_qual);
-            window.clear();
+            auto end = std::chrono::high_resolution_clock::now();
+            auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+            std::cout << "Time needed to render: " << diff.count() << "\n";
 
-            window.draw(mandelbrot);
-            if(drawen)
-                window.draw(julia_set);
+            auto startdrawing = std::chrono::high_resolution_clock::now();
+            buffer.clear();
+            window.clear();
+            buffer.draw(mandelbrot);
+            if (drawen) {
+                buffer.draw(julia_set);
+            }
+
+            buffer.display();
+            window.draw(sf::Sprite(buffer.getTexture()));
             window.draw(text);
 
             auto time = timer.restart();;
-			
-            std::cout << "Mandelbrot set " << "(" << quality << ")" <<  " was drew in : " << time.asMilliseconds() << std::endl;
-
-			if (quality == "Good") {
-				curr_qual = render_state::best;
-			}
-
             window.display();
+            auto enddrawing = std::chrono::high_resolution_clock::now();
+            auto diffdrawing = std::chrono::duration_cast<std::chrono::milliseconds>(enddrawing - startdrawing);
+            std::cout << "Time needed to apply SSAA4 and draw to window: " << diffdrawing.count() << "\n";
+            std::cout << "Mandelbrot set " << "(" << quality << ")" << " was drew in : " << time.asMilliseconds() << std::endl;
+            if (quality == "Bad") {
+                curr_qual = render_state::good;
+            }
+
+            if (quality == "Good") {
+                curr_qual = render_state::best;
+            }
         }
 
         if(mouse_moved && !block_julia) {
@@ -159,13 +175,18 @@ void main_thread() {
 
             julia_set.setPosition({ float(window.getSize().x - 800), 0 });
 
-			window.clear();
+            buffer.clear();
+            window.clear();
 
-            window.draw(julia_set);
-            window.draw(mandelbrot);
+            buffer.draw(mandelbrot);
+            buffer.draw(julia_set);
+
+            buffer.display();
+
+            window.draw(sf::Sprite(buffer.getTexture()));
             window.draw(text);
-			
-			window.display();
+
+            window.display();
 
             auto time = timer_julia.restart();
             
@@ -180,18 +201,20 @@ void main_thread() {
 			julia_set.render(curr_qual_jul, zx, zy);
             julia_set.setPosition({ float(window.getSize().x - 800), 0 });
 
+            buffer.clear();
             window.clear();
+            buffer.draw(mandelbrot);
+            if (drawen) {
+                buffer.draw(julia_set);
+            }
 
-            
-            window.draw(julia_set);
-            window.draw(mandelbrot);
+            buffer.display();
+            window.draw(sf::Sprite(buffer.getTexture()));
             window.draw(text);
-
+            window.display();
             
 
             std::cout << "julia set " << "(" << quality << ")\n";
-
-            window.display();
 
             if (quality == "Good") {
                 curr_qual_jul = render_state::best;
@@ -199,11 +222,9 @@ void main_thread() {
         }
         else {
 			window.clear();
-			window.draw(mandelbrot);
-			if (drawen)
-				window.draw(julia_set);
-			window.draw(text);
-			window.display();
+            window.draw(sf::Sprite(buffer.getTexture()));
+            window.draw(text);
+            window.display();
         }
 
         if(fps_clock.getElapsedTime().asSeconds() > 0.2f) {

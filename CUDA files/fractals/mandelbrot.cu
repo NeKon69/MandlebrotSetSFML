@@ -19,14 +19,19 @@
  * @param maxIterations Maximum iterations for Mandelbrot calculation.
  */
 __global__ void fractal_rendering(
-    unsigned char* pixels, int width, int height,
+    unsigned char* pixels, size_t size_of_pixels, int width, int height,
     double zoom_x, double zoom_y, double x_offset, double y_offset,
 	sf::Color* d_palette, int paletteSize, double maxIterations, bool* stopFlagDevice) {
+    maxIterations = double(maxIterations);
     *stopFlagDevice = false;
     
+    size_t expected_size = width * height * 4;
+
+    float scale_factor = (float)size_of_pixels / expected_size;
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
+
 
     if (x < width && y < height) {
         double real = x / zoom_x - x_offset;
@@ -64,11 +69,14 @@ __global__ void fractal_rendering(
             g = color.g;
             b = color.b;
         }
-        int index = (y * width + x) * 4;
-        pixels[index + 0] = r;
-        pixels[index + 1] = g;
-        pixels[index + 2] = b;
-        pixels[index + 3] = 255;
+        int base_index = (y * width + x) * 4;
+        for (int i = 0; i < scale_factor * 4; i += 4) {
+            int index = base_index + i;
+            pixels[index] = r;
+            pixels[index + 1] = g;
+            pixels[index + 2] = b;
+            pixels[index + 3] = 255;
+        }
     }
     *stopFlagDevice = false;
 }

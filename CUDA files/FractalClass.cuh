@@ -8,11 +8,13 @@
 namespace fractals {
 	struct mandelbrot{};
     struct julia{};
+    struct burning_ship{};
 };
 
 extern bool running_other_core;
 
 enum class render_state {
+	bad,
 	good,
     best
 };
@@ -42,7 +44,14 @@ protected:
     int paletteSize;
 
     unsigned char* d_pixels;
+    size_t ssaa_buffer_size = 0;
+
     unsigned char* pixels;
+    size_t ssaa_limit_dst = 0;
+
+	unsigned char* ssaa_buffer;
+
+    unsigned char* compressed;
 
 	bool is_paused = false;
 
