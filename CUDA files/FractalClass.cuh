@@ -59,6 +59,7 @@ protected:
 	bool antialiasing = true;
 
     bool* stopFlagDevice;
+    std::atomic<bool> stopFlagCpu;
 
     double zoom_scale;
 
