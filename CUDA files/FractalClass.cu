@@ -39,16 +39,21 @@ FractalBase<Derived>::FractalBase()
     cudaMalloc(&stopFlagDevice, sizeof(bool));
     bool flag = true;
     cudaMemcpy(stopFlagDevice, &flag, sizeof(bool), cudaMemcpyHostToDevice);
+    stopFlagCpu.store(flag);
 
     cudaMalloc(&d_palette, palette.size() * sizeof(sf::Color));
     cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
 
+    // Alloc data for the GPU uncompressed image
     cudaMallocManaged(&d_pixels, 1600 * 1200 * 4 * sizeof(uint32_t));
 
+    // Alloc data for the CPU uncompressed image
     cudaMallocHost(&pixels, 1600 * 1200 * 4 * sizeof(char4));
-    
+
+    // Alloc data for the GPU compressed image
     cudaMalloc(&ssaa_buffer, 800 * 600 * 4 * sizeof(char4));
 
+    // Alloc data for the CPU compressed image
 	cudaMallocHost(&compressed, 800 * 600 * 4 * sizeof(char4));
 }
 
@@ -84,15 +89,18 @@ double FractalBase<Derived>::get_zoom_y() { return zoom_y; }
 template <typename Derived>
 double FractalBase<Derived>::get_zoom_scale() { return zoom_scale; }
 
-template <typename Derived>
-void FractalBase<Derived>::checkEventAndSetFlag(cudaEvent_t event) {
-    while (cudaEventQuery(event) == cudaErrorNotReady) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    bool flag = false;
-    running_other_core = false;
-    cudaMemcpy(stopFlagDevice, &flag, sizeof(bool), cudaMemcpyHostToDevice);
-}
+
+// that code served me good in the past, however it's being replaced with better version with atomic operations
+// UwU sooooo saaaad UwU
+//template <typename Derived>
+//void FractalBase<Derived>::checkEventAndSetFlag(cudaEvent_t event) {
+//    while (cudaEventQuery(event) == cudaErrorNotReady) {
+//        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+//    }
+//    bool flag = false;
+//    running_other_core = false;
+//    cudaMemcpy(stopFlagDevice, &flag, sizeof(bool), cudaMemcpyHostToDevice);
+//}
 
 void FractalBase<fractals::mandelbrot>::render(render_state quality) {
     cudaEvent_t event;
@@ -127,6 +135,8 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
 
         bool flag = true;
         cudaMemcpy(stopFlagDevice, &flag, sizeof(bool), cudaMemcpyHostToDevice);
+        stopFlagCpu.store(flag);
+
         cudaDeviceSynchronize();
 
         width = new_width;
@@ -151,17 +161,23 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
         x_offset, y_offset, d_palette, paletteSize,
         max_iterations, stopFlagDevice
         );
+    stopFlagCpu.store(false);
 
     cudaEventRecord(event);
 
     std::thread eventChecker([this, event]() {
-        cudaEventSynchronize(event);
+        while (cudaGetLastError() == cudaErrorNotReady) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
         bool flag = false;
+        running_other_core = false;
         cudaMemcpy(stopFlagDevice, &flag, sizeof(bool), cudaMemcpyHostToDevice);
+        cudaEventDestroy(event);
+
+        stopFlagCpu.store(false);
         });
 
-    eventChecker.join();
-    cudaEventDestroy(event);
+    eventChecker.detach();
 
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
@@ -206,6 +222,8 @@ void FractalBase<fractals::julia>::render(
 
         bool flag = true;
         cudaMemcpy(stopFlagDevice, &flag, sizeof(bool), cudaMemcpyHostToDevice);
+        stopFlagCpu.store(flag);
+
         cudaDeviceSynchronize();
 
         width = new_width;
@@ -231,17 +249,23 @@ void FractalBase<fractals::julia>::render(
         x_offset, y_offset, d_palette, paletteSize,
         max_iterations, stopFlagDevice, zx, zy
         );
+    stopFlagCpu.store(false);
 
     cudaEventRecord(event);
 
     std::thread eventChecker([this, event]() {
-        cudaEventSynchronize(event);
+        while(cudaGetLastError() == cudaErrorNotReady) {
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
         bool flag = false;
+        running_other_core = false;
         cudaMemcpy(stopFlagDevice, &flag, sizeof(bool), cudaMemcpyHostToDevice);
+        cudaEventDestroy(event);
+
+        stopFlagCpu.store(false);
         });
 
-    eventChecker.join();
-    cudaEventDestroy(event);
+    eventChecker.detach();
 
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
@@ -252,32 +276,46 @@ void FractalBase<fractals::julia>::render(
 
 template <typename Derived>
 void FractalBase<Derived>::draw(sf::RenderTarget& target, sf::RenderStates states) const {
-    cudaMemcpy(pixels, d_pixels, width * height * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost);
-    sf::Image image({ width, height }, pixels);
     if (antialiasing) {
-
-        dim3 dimBlock(64, 64);
+        // SSAA rendering
+        dim3 dimBlock(50, 50);
         dim3 dimGrid(
             (width + dimBlock.x - 1) / dimBlock.x,
-            (height + dimBlock.y - 1) / dimBlock.y);
-        if (running_other_core)
-            cudaDeviceSynchronize();
-        ANTIALIASING_SSAA4 << <dimBlock, dimGrid >> > (d_pixels, ssaa_buffer, 1600, 1200, 800, 600);
+            (height + dimBlock.y - 1) / dimBlock.y
+        );
+        if (running_other_core) cudaDeviceSynchronize();
+        running_other_core = false;
+        auto start = std::chrono::high_resolution_clock::now();
+        ANTIALIASING_SSAA4<<<dimBlock, dimGrid>>>(d_pixels, ssaa_buffer, 1600, 1200, 800, 600);
         cudaDeviceSynchronize();
+		auto end = std::chrono::high_resolution_clock::now();
+		std::cout << "SSAA4 time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << " ms" << std::endl;
 
+        auto start_copying = std::chrono::high_resolution_clock::now();
         cudaMemcpy(compressed, ssaa_buffer, 800 * 600 * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost);
 
-        image = sf::Image({ 800, 600 }, compressed);
+        sf::Image image({ 800, 600 }, compressed);
+        sf::Texture texture(image);
+        sf::Sprite sprite(texture);
+
+		auto end_copying = std::chrono::high_resolution_clock::now();
+		std::cout << "SSAA4 copying time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_copying - start_copying).count() << " ms" << std::endl;
+
+        sprite.setPosition({ 0, 0 });
+        states.transform *= getTransform();
+        target.draw(sprite, states);
     }
+    else {
+        cudaMemcpy(pixels, d_pixels, width * height * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost);
 
-    sf::Texture texture;
-    texture.loadFromImage(image);
-    sf::Sprite sprite(texture);
+        sf::Image image({ 800, 600 }, pixels);
+        sf::Texture texture(image);
+        sf::Sprite sprite(texture);
 
-    sprite.setPosition({ 0, 0 });
-
-    states.transform *= getTransform();
-    target.draw(sprite, states);
+        sprite.setPosition({ 0, 0 });
+        states.transform *= getTransform();
+        target.draw(sprite, states);
+    }
 }
 template <typename Derived>
 void FractalBase<Derived>::handleZoom(float wheel_delta, const sf::Vector2i mouse_pos) {

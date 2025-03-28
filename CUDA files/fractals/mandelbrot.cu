@@ -23,14 +23,17 @@ __global__ void fractal_rendering(
     double zoom_x, double zoom_y, double x_offset, double y_offset,
 	sf::Color* d_palette, int paletteSize, double maxIterations, bool* stopFlagDevice) {
     maxIterations = double(maxIterations);
-    *stopFlagDevice = false;
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if(x == 0 && y == 0)
+        *stopFlagDevice = false;
     
     size_t expected_size = width * height * 4;
 
     float scale_factor = (float)size_of_pixels / expected_size;
 
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
 
 
     if (x < width && y < height) {
@@ -78,5 +81,6 @@ __global__ void fractal_rendering(
             pixels[index + 3] = 255;
         }
     }
-    *stopFlagDevice = false;
+    if (x == 0 && y == 0)
+        *stopFlagDevice = false;
 }
