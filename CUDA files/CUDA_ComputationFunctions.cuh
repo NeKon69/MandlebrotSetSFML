@@ -3,36 +3,36 @@
 #include <SFML/Graphics.hpp>
 
 // Device functions (inline definitions)
-inline __device__ double complex_mult_real(double real1, double imag1, double real2, double imag2) {
+inline __device__ float complex_mult_real(float real1, float imag1, float real2, float imag2) {
     return real1 * real2 - imag1 * imag2;
 }
 
-inline __device__ double complex_mult_imag(double real1, double imag1, double real2, double imag2) {
+inline __device__ float complex_mult_imag(float real1, float imag1, float real2, float imag2) {
     return 2 * real1 * imag2;
 }
 
-inline __device__ double dev_abs(double x) {
+inline __device__ float dev_abs(float x) {
     return (x >= 0) ? x : -x;
 }
 
-inline __device__ double dev_log2(double x) {
-    return log(x) / log(2.0);
+inline __device__ float dev_log2(float x) {
+    return log(x) / log(2.0f);
 }
 
-inline __device__ double dev_sqrt(double x) {
+inline __device__ float dev_sqrt(float x) {
     return sqrt(x);
 }
 
-inline __device__ double complex_abs2(double real, double imag) {
+inline __device__ float complex_abs2(float real, float imag) {
     return real * real + imag * imag;
 }
 
-inline __device__ double Gradient(double current_iteration, double max_iter) {
+inline __device__ float Gradient(float current_iteration, float max_iter) {
     if (current_iteration >= max_iter) return 0.0;
     // comment following two lines to make the colors less appealing on the screen (less of the colors circle the black thing on the screen)
     current_iteration = dev_sqrt(current_iteration);
     max_iter = dev_sqrt(max_iter);
-    return (current_iteration) / static_cast<double>(max_iter);
+    return (current_iteration) / static_cast<float>(max_iter);
 }
 
 inline __device__ sf::Color getPaletteColor(int index, int paletteSize, sf::Color* palette) {

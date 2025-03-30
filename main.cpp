@@ -36,6 +36,8 @@ void main_thread() {
 
 	bool julia_render = false;
 
+    sf::Clock timer_to_better_qual;
+
     FractalBase<fractals::mandelbrot> mandelbrot;
     FractalBase<fractals::julia> julia_set;
     julia_set.setPosition({float(window.getSize().x - 800), 0.f});
@@ -45,7 +47,7 @@ void main_thread() {
     
     bool mouse_moved = true;
 
-    window.setFramerateLimit(60);
+    window.setFramerateLimit(120);
 
     sf::Vector2i mouse;
     while (window.isOpen()) {
@@ -125,6 +127,7 @@ void main_thread() {
 				}
             }
         }
+
         ++fps;
 
 
@@ -155,13 +158,17 @@ void main_thread() {
             auto diffdrawing = std::chrono::duration_cast<std::chrono::milliseconds>(enddrawing - startdrawing);
             std::cout << "Time needed to apply SSAA4 and draw to window: " << diffdrawing.count() << "\n";
             std::cout << "Mandelbrot set " << "(" << quality << ")" << " was drew in : " << time.asMilliseconds() << std::endl;
-            if (quality == "Bad") {
-                curr_qual = render_state::good;
+            if (timer_to_better_qual.getElapsedTime().asMilliseconds() > 400) {
+                if (quality == "Bad") {
+                    curr_qual = render_state::good;
+                }
+
+                if (quality == "Good") {
+                    curr_qual = render_state::best;
+                }
+                timer_to_better_qual.restart();
             }
 
-            if (quality == "Good") {
-                curr_qual = render_state::best;
-            }
         }
 
         if(mouse_moved && !block_julia) {

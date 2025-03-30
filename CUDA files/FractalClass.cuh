@@ -65,6 +65,8 @@ protected:
 
     unsigned int width;
     unsigned int height;
+
+    cudaStream_t stream;
 public:
     FractalBase();
     ~FractalBase();

@@ -55,6 +55,8 @@ FractalBase<Derived>::FractalBase()
 
     // Alloc data for the CPU compressed image
 	cudaMallocHost(&compressed, 800 * 600 * 4 * sizeof(char4));
+
+	cudaStreamCreate(&stream);
 }
 
 template <typename Derived>
@@ -63,6 +65,8 @@ FractalBase<Derived>::~FractalBase() {
     cudaFree(d_pixels);
     cudaFree(stopFlagDevice);
     cudaFreeHost(pixels);
+	cudaFreeHost(compressed);
+	cudaStreamDestroy(stream);
 }
 
 template <typename Derived>
@@ -133,12 +137,6 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
         x_offset = center_x - (width / (zoom_x * zoom_scale)) / 2.0;
         y_offset = center_y - (height / (zoom_y * zoom_scale)) / 2.0;
 
-        bool flag = true;
-        cudaMemcpy(stopFlagDevice, &flag, sizeof(bool), cudaMemcpyHostToDevice);
-        stopFlagCpu.store(flag);
-
-        cudaDeviceSynchronize();
-
         width = new_width;
         height = new_height;
     }
@@ -146,38 +144,19 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
     double render_zoom_x = zoom_x * zoom_scale;
     double render_zoom_y = zoom_y * zoom_scale;
 
-    dim3 dimBlock(64, 64);
+    dim3 dimBlock(50, 50);
     dim3 dimGrid(
         (width + dimBlock.x - 1) / dimBlock.x,
         (height + dimBlock.y - 1) / dimBlock.y
     );
-    if (running_other_core)
-        cudaDeviceSynchronize();
-    running_other_core = true;
 
 	size_t len = width * height * 4;
-    fractal_rendering <<<dimBlock, dimGrid>>> (
-        d_pixels, len, width, height, render_zoom_x, render_zoom_y,
-        x_offset, y_offset, d_palette, paletteSize,
-        max_iterations, stopFlagDevice
+    fractal_rendering <<<dimBlock, dimGrid, 0, stream>>> (
+        d_pixels, len, width, height, float(render_zoom_x), float(render_zoom_y),
+        float(x_offset), float(y_offset), d_palette, paletteSize,
+        float(max_iterations), stopFlagDevice
         );
-    stopFlagCpu.store(false);
 
-    cudaEventRecord(event);
-
-    std::thread eventChecker([this, event]() {
-        while (cudaGetLastError() == cudaErrorNotReady) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-        bool flag = false;
-        running_other_core = false;
-        cudaMemcpy(stopFlagDevice, &flag, sizeof(bool), cudaMemcpyHostToDevice);
-        cudaEventDestroy(event);
-
-        stopFlagCpu.store(false);
-        });
-
-    eventChecker.detach();
 
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
@@ -220,12 +199,6 @@ void FractalBase<fractals::julia>::render(
         x_offset = center_x - (width / (zoom_x * zoom_scale)) / 2.0;
         y_offset = center_y - (height / (zoom_y * zoom_scale)) / 2.0;
 
-        bool flag = true;
-        cudaMemcpy(stopFlagDevice, &flag, sizeof(bool), cudaMemcpyHostToDevice);
-        stopFlagCpu.store(flag);
-
-        cudaDeviceSynchronize();
-
         width = new_width;
         height = new_height;
     }
@@ -233,39 +206,20 @@ void FractalBase<fractals::julia>::render(
     double render_zoom_x = zoom_x * zoom_scale;
     double render_zoom_y = zoom_y * zoom_scale;
 
-    dim3 dimBlock(64, 64);
+    dim3 dimBlock(50, 50);
     dim3 dimGrid(
         (width + dimBlock.x - 1) / dimBlock.x,
         (height + dimBlock.y - 1) / dimBlock.y
     );
-    if (running_other_core)
-        cudaDeviceSynchronize();
-    running_other_core = true;
+
 
     size_t len = width * height * 4;
 
-    fractal_rendering<<<dimBlock, dimGrid>>>(
-        d_pixels, len, width, height, render_zoom_x, render_zoom_y,
-        x_offset, y_offset, d_palette, paletteSize,
-        max_iterations, stopFlagDevice, zx, zy
+    fractal_rendering<<<dimBlock, dimGrid, 0, stream>>>(
+        d_pixels, len, width, height, float(render_zoom_x), float(render_zoom_y),
+        float(x_offset), float(y_offset), d_palette, paletteSize,
+        float(max_iterations), stopFlagDevice, zx, zy
         );
-    stopFlagCpu.store(false);
-
-    cudaEventRecord(event);
-
-    std::thread eventChecker([this, event]() {
-        while(cudaGetLastError() == cudaErrorNotReady) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(1));
-		}
-        bool flag = false;
-        running_other_core = false;
-        cudaMemcpy(stopFlagDevice, &flag, sizeof(bool), cudaMemcpyHostToDevice);
-        cudaEventDestroy(event);
-
-        stopFlagCpu.store(false);
-        });
-
-    eventChecker.detach();
 
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
@@ -283,16 +237,18 @@ void FractalBase<Derived>::draw(sf::RenderTarget& target, sf::RenderStates state
             (width + dimBlock.x - 1) / dimBlock.x,
             (height + dimBlock.y - 1) / dimBlock.y
         );
-        if (running_other_core) cudaDeviceSynchronize();
-        running_other_core = false;
+
         auto start = std::chrono::high_resolution_clock::now();
-        ANTIALIASING_SSAA4<<<dimBlock, dimGrid>>>(d_pixels, ssaa_buffer, 1600, 1200, 800, 600);
-        cudaDeviceSynchronize();
-		auto end = std::chrono::high_resolution_clock::now();
-		std::cout << "SSAA4 time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << " ms" << std::endl;
+        ANTIALIASING_SSAA4<<<dimBlock, dimGrid, 0, stream>>>(d_pixels, ssaa_buffer, 1600, 1200, 800, 600);
+        auto end = std::chrono::high_resolution_clock::now();
+
 
         auto start_copying = std::chrono::high_resolution_clock::now();
-        cudaMemcpy(compressed, ssaa_buffer, 800 * 600 * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost);
+        cudaMemcpyAsync(compressed, ssaa_buffer, 800 * 600 * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost, stream);
+
+
+		std::cout << "SSAA4 time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << " ms" << std::endl;
+        cudaStreamSynchronize(stream);
 
         sf::Image image({ 800, 600 }, compressed);
         sf::Texture texture(image);
@@ -306,7 +262,7 @@ void FractalBase<Derived>::draw(sf::RenderTarget& target, sf::RenderStates state
         target.draw(sprite, states);
     }
     else {
-        cudaMemcpy(pixels, d_pixels, width * height * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost);
+        cudaMemcpyAsync(pixels, d_pixels, width * height * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost, stream);
 
         sf::Image image({ 800, 600 }, pixels);
         sf::Texture texture(image);
