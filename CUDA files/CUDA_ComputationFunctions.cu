@@ -70,6 +70,19 @@ std::vector<sf::Color> createHSVPalette(int numColors) {
     return palette;
 }
 
+std::vector<sf::Color> CreateBlackOWhitePalette(int numColors) {
+	std::vector<sf::Color> palette;
+	for (int i = 0; i < numColors; ++i) {
+		double t = static_cast<double>(i) / numColors;
+		unsigned int r, g, b;
+		r = static_cast<unsigned int>(t * 255);
+		g = static_cast<unsigned int>(t * 255);
+		b = static_cast<unsigned int>(t * 255);
+		palette.push_back(sf::Color(r, g, b, 255));
+	}
+	return palette;
+}
+
 /**
  * @brief Applies 4x Super-Sampling Anti-Aliasing (SSAA) to reduce aliasing artifacts.
  * This function takes a high-resolution image (2x width and height of the desired output)
@@ -108,5 +121,5 @@ void ANTIALIASING_SSAA4(unsigned char* src, unsigned char* dest, int src_width, 
     }
 }
 
-std::vector<sf::Color> palette(createHSVPalette(200000));
+std::vector<sf::Color> palette(CreateBlackOWhitePalette(200000));
 

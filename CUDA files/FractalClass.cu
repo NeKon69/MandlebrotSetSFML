@@ -27,14 +27,14 @@ template <typename Derived>
 FractalBase<Derived>::FractalBase()
     : max_iterations(300), basic_zoom_x(240.0), basic_zoom_y(240.0),
     zoom_x(basic_zoom_x), zoom_y(basic_zoom_y),
-    x_offset(3.0), y_offset(1.825),
+    x_offset(3.0), y_offset(1.85),
     zoom_factor(1.0), zoom_speed(0.1),
-    pixels(new unsigned char[width * height * 4]), paletteSize(palette.size()),
+    paletteSize(palette.size()),
     zoom_scale(1.0), width(400), height(300)
 {
     if (std::is_same<Derived, fractals::julia>::value) {
-        x_offset = 1.8;
-        y_offset = 1.25;
+        x_offset = 2.5;
+        //y_offset = 1.25;4
     }
     cudaMalloc(&stopFlagDevice, sizeof(bool));
     bool flag = true;

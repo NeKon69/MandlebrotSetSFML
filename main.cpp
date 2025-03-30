@@ -25,6 +25,7 @@ void main_thread() {
     double zx, zy;
 
     bool drawen = false;
+    bool pressed = true;
 
     sf::Clock timer;
     sf::Clock timer_julia;
@@ -88,8 +89,10 @@ void main_thread() {
             }
 
             if (const auto* mouseButtonPressed = event->getIf<sf::Event::MouseButtonPressed>()) {
+                
                 if (mouseButtonPressed->button == sf::Mouse::Button::Left) {
                     if (mouse.x < 800 && mouse.y < 600) {
+                        pressed = true;
                         mouse_moved = true;
                         curr_qual = render_state::good;
                         mandelbrot.start_dragging(mouse);
@@ -103,8 +106,10 @@ void main_thread() {
 
             if (const auto* mouseButtonReleased = event->getIf<sf::Event::MouseButtonReleased>()) {
                 if (mouseButtonReleased->button == sf::Mouse::Button::Left) {
-                    if (mouse.x < 800 && mouse.y < 600)
+                    if (mouse.x < 800 && mouse.y < 600) {
+                        pressed = false;
                         mandelbrot.stop_dragging();
+                    }
                     else if (mouse.x > window.getSize().x - 800 && mouse.y < 600) {
                         julia_set.stop_dragging();
                     }
@@ -158,7 +163,7 @@ void main_thread() {
             auto diffdrawing = std::chrono::duration_cast<std::chrono::milliseconds>(enddrawing - startdrawing);
             std::cout << "Time needed to apply SSAA4 and draw to window: " << diffdrawing.count() << "\n";
             std::cout << "Mandelbrot set " << "(" << quality << ")" << " was drew in : " << time.asMilliseconds() << std::endl;
-            if (timer_to_better_qual.getElapsedTime().asMilliseconds() > 400) {
+            if (timer_to_better_qual.getElapsedTime().asMilliseconds() > 500 && !pressed) {
                 if (quality == "Bad") {
                     curr_qual = render_state::good;
                 }

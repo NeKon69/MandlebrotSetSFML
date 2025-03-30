@@ -57,11 +57,11 @@ __global__ void fractal_rendering(
         }
 
         unsigned char r, g, b;
-        if (current_iteration == maxIterations) {
-            r = g = b = 0;
-        }
+        //if (current_iteration == maxIterations) {
+        //    r = g = b = 0;
+        //}
 
-        else {
+        /*else*/ {
             // Smooth iteration count
             current_iteration = current_iteration + 1 - dev_log2(dev_log2(dev_abs(dev_sqrt(complex_abs2(z_real, z_imag)))));
             // Calculate gradient value
