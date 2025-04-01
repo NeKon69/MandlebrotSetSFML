@@ -30,13 +30,13 @@ FractalBase<Derived>::FractalBase()
     zoom_x(basic_zoom_x), zoom_y(basic_zoom_y),
     x_offset(3.0), y_offset(1.85),
     zoom_factor(1.0), zoom_speed(0.1),
-    zoom_scale(1.0), width(400), height(300)
+    zoom_scale(1.0), width(400), height(300), sprite(texture)
 {
     if (std::is_same<Derived, fractals::julia>::value) {
         x_offset = 2.5;
         //y_offset = 1.25;
-        palette = CreateBlackOWhitePalette(5000);
-        paletteSize = 5000;
+        palette = createHSVPalette(20000);
+        paletteSize = 20000;
     }
     else {
 		palette = createHSVPalette(20000);
@@ -67,18 +67,27 @@ FractalBase<Derived>::FractalBase()
 
     cudaEventCreate(&start_rendering);
     cudaEventCreate(&stop_rendering);
+
+    cudaMalloc(&d_total_iterations, sizeof(int));
+    cudaMemset(d_total_iterations, 0, sizeof(int));
+    cudaMallocHost(&h_total_iterations , sizeof(int));
+
+    cudaStreamCreate(&dataStream);
 }
 
 template <typename Derived>
 FractalBase<Derived>::~FractalBase() {
-    cudaFree(d_palette);
     cudaFree(d_pixels);
+    cudaFree(d_palette);
     cudaFree(stopFlagDevice);
+    cudaFree(d_total_iterations);
     cudaFreeHost(pixels);
 	cudaFreeHost(compressed);
-    cudaStreamDestroy(stream);
+    cudaFreeHost(h_total_iterations);
 	cudaEventDestroy(start_rendering);
 	cudaEventDestroy(stop_rendering);
+    cudaStreamDestroy(stream);
+	cudaStreamDestroy(dataStream);
 }
 
 template <typename Derived>
@@ -105,6 +114,43 @@ double FractalBase<Derived>::get_zoom_y() { return zoom_y; }
 template <typename Derived>
 double FractalBase<Derived>::get_zoom_scale() { return zoom_scale; }
 
+template <typename Derived>
+double FractalBase<Derived>::get_hardness_coeff() { return hardness_coeff; }
+
+template <typename Derived>
+void FractalBase<Derived>::post_processing() {
+    if (antialiasing) {
+        // SSAA rendering
+        dim3 dimBlock(32, 32);
+        dim3 dimGrid(
+            (width + dimBlock.x - 1) / dimBlock.x,
+            (height + dimBlock.y - 1) / dimBlock.y
+        );
+
+        auto start = std::chrono::high_resolution_clock::now();
+        ANTIALIASING_SSAA4 << <dimGrid, dimBlock, 0, stream >> > (d_pixels, ssaa_buffer, 1600, 1200, 800, 600);
+        auto end = std::chrono::high_resolution_clock::now();
+        cudaMemcpyAsync(compressed, ssaa_buffer, 800 * 600 * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost, stream);
+
+        std::cout << "SSAA4 time + copying to host: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << " ms" << std::endl;
+        cudaStreamSynchronize(stream);
+        image = sf::Image({ 800, 600 }, compressed);
+    }
+    else {
+        cudaEventRecord(stop_rendering, stream);
+        cudaMemcpyAsync(pixels, d_pixels, width * height * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost, stream);
+        cudaMemcpyAsync(h_total_iterations, d_total_iterations, sizeof(int), cudaMemcpyDeviceToHost, dataStream);
+        cudaError_t status = cudaEventQuery(stop_rendering);
+        hardness_coeff = *h_total_iterations / (width * height * 1.0);
+        if (status != cudaSuccess && (hardness_coeff > 50) || std::is_same<Derived, fractals::julia>::value) {
+            cudaStreamSynchronize(stream);
+        }
+        image = sf::Image({ 800, 600 }, pixels);
+    }
+    texture.loadFromImage(image, true);
+    sprite.setTexture(texture, true);
+    sprite.setPosition({ 0, 0 });
+}
 
 // that code served me good in the past, however it's being replaced with better version with atomic operations
 // UwU sooooo saaaad UwU
@@ -167,7 +213,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
     fractal_rendering<<<dimGrid, dimBlock, 0, stream>>>(
         d_pixels, len, width, height, float(render_zoom_x), float(render_zoom_y),
         float(x_offset), float(y_offset), d_palette, paletteSize,
-        float(max_iterations), stopFlagDevice
+        float(max_iterations), d_total_iterations
         );
 
     cudaError_t err = cudaGetLastError();
@@ -175,10 +221,10 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
         dimBlock.x -= 2;
         dimBlock.y -= 2;
         dimGrid = (width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y;
-        fractal_rendering << <dimGrid, dimBlock, 0, stream >> > (
+        fractal_rendering<<<dimGrid, dimBlock, 0, stream>>>(
             d_pixels, len, width, height, float(render_zoom_x), float(render_zoom_y),
             float(x_offset), float(y_offset), d_palette, paletteSize,
-            float(max_iterations), stopFlagDevice
+            float(max_iterations), d_total_iterations
             );
         err = cudaGetLastError();
         if (dimBlock.x < 8) {
@@ -186,6 +232,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
         }
     }
     ++counter;
+    post_processing();
 }
 
 
@@ -242,7 +289,7 @@ void FractalBase<fractals::julia>::render(
     fractal_rendering<<<dimGrid, dimBlock, 0, stream>>>(
         d_pixels, len, width, height, float(render_zoom_x), float(render_zoom_y),
         float(x_offset), float(y_offset), d_palette, paletteSize,
-        float(max_iterations), stopFlagDevice, zx, zy
+        float(max_iterations), d_total_iterations, zx, zy
         );
 
     cudaError_t err = cudaGetLastError();
@@ -254,7 +301,7 @@ void FractalBase<fractals::julia>::render(
         fractal_rendering<<<dimGrid, dimBlock, 0, stream>>>(
             d_pixels, len, width, height, float(render_zoom_x), float(render_zoom_y),
             float(x_offset), float(y_offset), d_palette, paletteSize,
-            float(max_iterations), stopFlagDevice, zx, zy
+            float(max_iterations), d_total_iterations, zx, zy
             );
         err = cudaGetLastError();
         if (dimBlock.x < 8) {
@@ -262,58 +309,16 @@ void FractalBase<fractals::julia>::render(
         }
     }
     ++counter;
+    post_processing();
 }
+
+
 
 
 template <typename Derived>
 void FractalBase<Derived>::draw(sf::RenderTarget& target, sf::RenderStates states) const {
-    if (antialiasing) {
-        // SSAA rendering
-        dim3 dimBlock(32, 32);
-        dim3 dimGrid(
-            (width + dimBlock.x - 1) / dimBlock.x,
-            (height + dimBlock.y - 1) / dimBlock.y
-        );
-
-        auto start = std::chrono::high_resolution_clock::now();
-        ANTIALIASING_SSAA4<<<dimGrid, dimBlock, 0, stream>>>(d_pixels, ssaa_buffer, 1600, 1200, 800, 600);
-        auto end = std::chrono::high_resolution_clock::now();
-
-
-        auto start_copying = std::chrono::high_resolution_clock::now();
-        cudaMemcpyAsync(compressed, ssaa_buffer, 800 * 600 * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost, stream);
-
-
-		std::cout << "SSAA4 time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << " ms" << std::endl;
-        cudaStreamSynchronize(stream);
-
-        sf::Image image({ 800, 600 }, compressed);
-        sf::Texture texture(image);
-        sf::Sprite sprite(texture);
-
-		auto end_copying = std::chrono::high_resolution_clock::now();
-		std::cout << "SSAA4 copying time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_copying - start_copying).count() << " ms" << std::endl;
-
-        sprite.setPosition({ 0, 0 });
-        states.transform *= getTransform();
-        target.draw(sprite, states);
-    }
-    else {
-        cudaEventRecord(stop_rendering, stream);
-        cudaMemcpyAsync(pixels, d_pixels, width * height * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost, stream);
-        cudaError_t status = cudaEventQuery(stop_rendering);
-        if (status != cudaSuccess && counter % 10 == 0) {
-            //std::cout << "Rendering is not finished: " << cudaGetErrorString(status) << "\n";
-		    //cudaStreamSynchronize(stream);
-        }
-        sf::Image image({ 800, 600 }, pixels);
-        sf::Texture texture(image);
-        sf::Sprite sprite(texture);
-
-        sprite.setPosition({ 0, 0 });
-        states.transform *= getTransform();
-        target.draw(sprite, states);
-    }
+    states.transform *= getTransform();
+    target.draw(sprite, states);
 }
 template <typename Derived>
 void FractalBase<Derived>::handleZoom(float wheel_delta, const sf::Vector2i mouse_pos) {

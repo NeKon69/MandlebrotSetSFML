@@ -2,6 +2,7 @@
 #include "fractals/mandelbrot.cuh"
 #include "fractals/julia.cuh"
 #include "CUDA_ComputationFunctions.cuh"
+#include "benchmark.cuh"
 #include <TGUI/Backend/SFML-Graphics.hpp>
 #include <cuda_runtime.h>
 
@@ -68,9 +69,19 @@ protected:
     unsigned int height;
 
     cudaStream_t stream;
+    cudaStream_t dataStream;
     cudaEvent_t start_rendering, stop_rendering;
 
     unsigned char counter = 0;
+
+    unsigned int* d_total_iterations;
+    unsigned int* h_total_iterations;
+
+    sf::Image image;
+    sf::Texture texture;
+    sf::Sprite sprite;
+
+    float hardness_coeff = 0.f;
 public:
     FractalBase();
     ~FractalBase();
@@ -93,11 +104,15 @@ public:
 
     double get_zoom_scale();
 
+    double get_hardness_coeff();
+
 
     /*@brief sets max_iterations to new given number
     **@param max_iters
     */
 	void set_max_iters(unsigned int max_iters);
+
+    void post_processing();
 
     /**
      * @brief CUDA kernel function to calculate and render the fractal given template.

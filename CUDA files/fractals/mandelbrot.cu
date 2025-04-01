@@ -21,10 +21,19 @@
 __global__ void fractal_rendering(
     unsigned char* pixels, size_t size_of_pixels, int width, int height,
     float zoom_x, float zoom_y, float x_offset, float y_offset,
-	sf::Color* d_palette, int paletteSize, float maxIterations, bool* stopFlagDevice) {
+	sf::Color* d_palette, int paletteSize, float maxIterations, unsigned int* d_total_iterations) {
+
+    __shared__ unsigned int total_iterations[1024];
+
     maxIterations = float(maxIterations);
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    int x =   blockIdx.x * blockDim.x + threadIdx.x;
+    int y =   blockIdx.y * blockDim.y + threadIdx.y;
+    int id =  threadIdx.y * blockDim.y + threadIdx.x;
+
+    if (x == 0 && y == 0) {
+        *d_total_iterations = 0;
+    }
     
     size_t expected_size = width * height * 4;
 
@@ -44,6 +53,20 @@ __global__ void fractal_rendering(
             z_real = new_real;
             z_imag = new_imag;
             current_iteration++;
+        }
+
+        total_iterations[id] = current_iteration;
+        //__syncthreads();
+
+        for (int s = blockDim.x * blockDim.y / 2; s > 0; s >>= 1) {
+            if (id < s) {
+                total_iterations[id] += total_iterations[id + s];
+            }
+            //__syncthreads();
+        }
+        if (id == 0) {
+            //d_total_iterations += total_iterations[0];
+            atomicAdd(d_total_iterations, total_iterations[0]);
         }
 
         unsigned char r, g, b;
