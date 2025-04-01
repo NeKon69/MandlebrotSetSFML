@@ -1,6 +1,6 @@
 #pragma once
 #include <cuda_runtime.h>
-#include <SFML/Graphics.hpp>
+#include <TGUI/Backend/SFML-Graphics.hpp>
 
 // Device functions (inline definitions)
 inline __device__ float complex_mult_real(float real1, float imag1, float real2, float imag2) {
@@ -45,6 +45,6 @@ __global__ void ANTIALIASING_SSAA4(unsigned char* src, unsigned char* dest, int 
 // Host utility functions (declarations only)
 extern void cudaCheckError();
 extern void HSVtoRGB(double h, double s, double v, unsigned int& r, unsigned int& g, unsigned int& b);
-extern std::vector<sf::Color> createHSVPalette(int numColors);
 
-extern std::vector<sf::Color> palette;
+extern std::vector<sf::Color> CreateBlackOWhitePalette(int numColors);
+extern std::vector<sf::Color> createHSVPalette(int numColors);

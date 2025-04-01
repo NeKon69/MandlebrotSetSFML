@@ -26,13 +26,13 @@ inline static void cudaCheckError() {
  * @param g Reference to the green channel (output).
  * @param b Reference to the blue channel (output).
  */
-inline static void HSVtoRGB(double h, double s, double v, unsigned int& r, unsigned int& g, unsigned int& b) {
+[[assume(h > 0 && h < 360 && s >= 0 && s <= 1 && v >= 0 && v <= 1 && r >= 0 && g >= 0 && b >= 0 && r <= 255 && g <= 255 && b <= 255)]] inline static void HSVtoRGB(double h, double s, double v, unsigned int& r, unsigned int& g, unsigned int& b) {
     h = fmod(h, 360.0);
     double c = v * s;
     double x = c * (1 - std::fabs(fmod(h / 60.0, 2) - 1));
     double m = v - c;
 
-    double r_, g_, b_;
+    double r_ = 0, g_ = 0, b_ = 0;
     if (h < 60) { r_ = c, g_ = x, b_ = 0; }
     else if (h < 120) { r_ = x, g_ = c, b_ = 0; }
     else if (h < 180) { r_ = 0, g_ = c, b_ = x; }
@@ -51,7 +51,7 @@ inline static void HSVtoRGB(double h, double s, double v, unsigned int& r, unsig
  * @param numColors The number of colors in the palette.
  * @return std::vector<sf::Color> A vector containing the generated color palette.
  **/
-std::vector<sf::Color> createHSVPalette(int numColors) {
+[[assume(numColors > 500)]] std::vector<sf::Color> createHSVPalette(int numColors) {
     std::vector<sf::Color> palette;
     for (int i = 0; i < numColors; ++i) {
         double t = static_cast<double>(i) / numColors;
@@ -120,6 +120,4 @@ void ANTIALIASING_SSAA4(unsigned char* src, unsigned char* dest, int src_width, 
         dest[dest_index + 3] = 255;
     }
 }
-
-std::vector<sf::Color> palette(CreateBlackOWhitePalette(200000));
 

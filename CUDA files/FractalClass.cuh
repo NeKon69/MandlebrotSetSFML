@@ -2,7 +2,7 @@
 #include "fractals/mandelbrot.cuh"
 #include "fractals/julia.cuh"
 #include "CUDA_ComputationFunctions.cuh"
-#include <SFML/Graphics.hpp>
+#include <TGUI/Backend/SFML-Graphics.hpp>
 #include <cuda_runtime.h>
 
 namespace fractals {
@@ -41,6 +41,7 @@ protected:
 
     sf::Color* d_palette;
 
+    std::vector<sf::Color> palette;
     int paletteSize;
 
     unsigned char* d_pixels;
@@ -67,6 +68,9 @@ protected:
     unsigned int height;
 
     cudaStream_t stream;
+    cudaEvent_t start_rendering, stop_rendering;
+
+    unsigned char counter = 0;
 public:
     FractalBase();
     ~FractalBase();
@@ -94,10 +98,6 @@ public:
     **@param max_iters
     */
 	void set_max_iters(unsigned int max_iters);
-
-
-
-    void checkEventAndSetFlag(cudaEvent_t event);
 
     /**
      * @brief CUDA kernel function to calculate and render the fractal given template.
@@ -145,4 +145,9 @@ public:
      * @brief Stops the dragging operation when the mouse button is released.
      */
     void stop_dragging();
+
+    /*@brief moves fractal by given coords
+    * @param offset: x, y
+    */
+    void move_fractal(sf::Vector2i offset);
 };

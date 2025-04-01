@@ -10,9 +10,6 @@ __global__ void fractal_rendering(
 	int x = blockIdx.x * blockDim.x + threadIdx.x;
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
 
-	if (x == 0 && y == 0)
-		*stopFlagDevice = false;
-
 	size_t expected_size = width * height * 4;
 
 	float scale_factor = (float)size_of_pixels / expected_size;
@@ -33,19 +30,15 @@ __global__ void fractal_rendering(
 			z_real = new_real;
 			z_imag = new_imag;
 			current_iteration++;
-			if (*stopFlagDevice) {
-				printf("Rendering: width=%d, height=%d, x=%f, y=%d\n", width, height, x, y);
-				return;
-			}
 
 		}
 
 		unsigned char r, g, b;
-		//if (current_iteration == maxIterations) {
-		//	r = g = b = 0; 
-		//}
+		if (current_iteration == maxIterations) {
+			r = g = b = 0; 
+		}
 
-		/*else */{
+		else {
 			// Smooth iteration count
 			current_iteration = current_iteration + 1 - dev_log2(dev_log2(dev_abs(dev_sqrt(complex_abs2(z_real, z_imag)))));
 			// Calculate gradient value
@@ -67,6 +60,5 @@ __global__ void fractal_rendering(
 			pixels[index + 3] = 255;
 		}
 	}
-	if (x == 0 && y == 0)
-		*stopFlagDevice = false;
+
 }

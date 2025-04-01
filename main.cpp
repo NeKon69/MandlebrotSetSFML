@@ -1,5 +1,5 @@
+#include <TGUI/Backend/SFML-Graphics.hpp>
 #include "CUDA files/FractalClass.cuh"
-#include <SFML/Graphics.hpp>
 #include <iostream>
 #include <thread>
 
@@ -22,10 +22,13 @@ void main_thread() {
     text.setString("0");
 
 
+    sf::Vector2i base_mouse_pos;
+
     double zx, zy;
 
     bool drawen = false;
     bool pressed = true;
+    bool first_move = true;
 
     sf::Clock timer;
     sf::Clock timer_julia;
@@ -48,7 +51,7 @@ void main_thread() {
     
     bool mouse_moved = true;
 
-    window.setFramerateLimit(120);
+    window.setFramerateLimit(360);
 
     sf::Vector2i mouse;
     while (window.isOpen()) {
@@ -71,9 +74,37 @@ void main_thread() {
                     if (mouse.x < 800 && mouse.y < 600)
                         mandelbrot.set_max_iters(mandelbrot.get_max_iters() * 2);
                 }
-                else if(button->scancode == sf::Keyboard::Scancode::S) {
+                else if(button->scancode == sf::Keyboard::Scancode::B) {
                     if (mouse.x < 800 && mouse.y < 600)
                         block_julia = !block_julia;
+				}
+                else if (button->scancode == sf::Keyboard::Scancode::W) {
+                    if (mouse.x < 800 && mouse.y < 600) {
+                        mouse_moved = true;
+                        curr_qual = render_state::good;
+                        mandelbrot.move_fractal({ 0, 1 });
+                    }
+                }
+                else if (button->scancode == sf::Keyboard::Scancode::S) {
+					if (mouse.x < 800 && mouse.y < 600) {
+						mouse_moved = true;
+						curr_qual = render_state::good;
+						mandelbrot.move_fractal({ 0, -1 });
+					}
+                }
+                else if (button->scancode == sf::Keyboard::Scancode::A) {
+					if (mouse.x < 800 && mouse.y < 600) {
+						mouse_moved = true;
+						curr_qual = render_state::good;
+						mandelbrot.move_fractal({ 1, 0 });
+					}
+                }
+				else if (button->scancode == sf::Keyboard::Scancode::D) {
+					if (mouse.x < 800 && mouse.y < 600) {
+						mouse_moved = true;
+						curr_qual = render_state::good;
+						mandelbrot.move_fractal({ -1, 0 });
+					}
 				}
             }
             
@@ -136,14 +167,10 @@ void main_thread() {
         ++fps;
 
 
-        if (curr_qual != render_state::best || prev_qual != render_state::best) {
+        if (curr_qual != render_state::best || prev_qual != render_state::best && !pressed) {
 			prev_qual = curr_qual;
             std::string quality = curr_qual == render_state::best ? "Best" : curr_qual == render_state::good ? "Good" : "Bad";
-            auto start = std::chrono::high_resolution_clock::now();
             mandelbrot.render(curr_qual);
-            auto end = std::chrono::high_resolution_clock::now();
-            auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-            std::cout << "Time needed to render: " << diff.count() << "\n";
 
             auto startdrawing = std::chrono::high_resolution_clock::now();
             buffer.clear();
@@ -163,6 +190,7 @@ void main_thread() {
             auto diffdrawing = std::chrono::duration_cast<std::chrono::milliseconds>(enddrawing - startdrawing);
             std::cout << "Time needed to apply SSAA4 and draw to window: " << diffdrawing.count() << "\n";
             std::cout << "Mandelbrot set " << "(" << quality << ")" << " was drew in : " << time.asMilliseconds() << std::endl;
+            std::cout << "Zoom scale: " << mandelbrot.get_zoom_x() << "\n";
             if (timer_to_better_qual.getElapsedTime().asMilliseconds() > 500 && !pressed) {
                 if (quality == "Bad") {
                     curr_qual = render_state::good;
@@ -173,7 +201,6 @@ void main_thread() {
                 }
                 timer_to_better_qual.restart();
             }
-
         }
 
         if(mouse_moved && !block_julia) {
