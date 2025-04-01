@@ -3,7 +3,9 @@
 #include <iostream>
 #include <thread>
 
+
 void main_thread() {
+
     render_state curr_qual = render_state::bad;
     render_state prev_qual = render_state::bad;
     render_state prev_qual_jul = render_state::good;
@@ -19,7 +21,14 @@ void main_thread() {
     if (!state)
         return;
     sf::Text text(font);
+	text.setPosition({ 10, 10 });
     text.setString("0");
+    sf::Text hardness(font);
+    hardness.setPosition({ 10, 40 });
+    hardness.setString("0.0");
+    sf::Text hardness_julia(font);
+	hardness_julia.setPosition({ 1920 - 800 + 10, 40 });
+	hardness_julia.setString("0.0");
 
 
     sf::Vector2i base_mouse_pos;
@@ -183,6 +192,8 @@ void main_thread() {
             buffer.display();
             window.draw(sf::Sprite(buffer.getTexture()));
             window.draw(text);
+            window.draw(hardness);
+            window.draw(hardness_julia);
 
             auto time = timer.restart();;
             window.display();
@@ -224,6 +235,8 @@ void main_thread() {
 
             window.draw(sf::Sprite(buffer.getTexture()));
             window.draw(text);
+            window.draw(hardness);
+            window.draw(hardness_julia);
 
             window.display();
 
@@ -250,6 +263,8 @@ void main_thread() {
             buffer.display();
             window.draw(sf::Sprite(buffer.getTexture()));
             window.draw(text);
+            window.draw(hardness);
+            window.draw(hardness_julia);
             window.display();
             
 
@@ -263,15 +278,19 @@ void main_thread() {
 			window.clear();
             window.draw(sf::Sprite(buffer.getTexture()));
             window.draw(text);
+            window.draw(hardness);
+            window.draw(hardness_julia);
             window.display();
         }
 
         if(fps_clock.getElapsedTime().asSeconds() > 0.2f) {
             float elapsed = fps_clock.getElapsedTime().asSeconds();
             text.setString(std::to_string(fps / elapsed));
-            text.setPosition({ 10, 10 });
+            hardness.setString(std::to_string(mandelbrot.get_hardness_coeff()));
+            hardness_julia.setString(std::to_string(julia_set.get_hardness_coeff()));
 			fps = 0;
 			fps_clock.restart();
+
 		}
 
     }
