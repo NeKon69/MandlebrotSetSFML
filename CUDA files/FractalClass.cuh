@@ -12,6 +12,17 @@ namespace fractals {
     struct burning_ship{};
 };
 
+enum class Palletes {
+    HSV,
+    BlackOWhite,
+    Basic,
+    Fire,
+    Pastel,
+    OscillatingGrayscale,
+    Interpolated,
+    CyclicHSV
+};
+
 extern bool running_other_core;
 
 enum class render_state {
@@ -76,12 +87,16 @@ protected:
 
     unsigned int* d_total_iterations;
     unsigned int* h_total_iterations;
+    float maxComputation;
 
     sf::Image image;
     sf::Texture texture;
     sf::Sprite sprite;
 
     float hardness_coeff = 0.f;
+
+    Palletes curr_pallete = Palletes::HSV;
+    unsigned int degrees_offsetForHSV = 0;
 public:
     FractalBase();
     ~FractalBase();
@@ -106,6 +121,13 @@ public:
 
     double get_hardness_coeff();
 
+    void setMaxComputation(float Gflops);
+
+    void setPallete(std::string name);
+
+    Palletes getPallete();
+
+    void SetDegreesOffsetForHSV(int degrees);
 
     /*@brief sets max_iterations to new given number
     **@param max_iters

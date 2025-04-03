@@ -30,7 +30,7 @@ FractalBase<Derived>::FractalBase()
     zoom_x(basic_zoom_x), zoom_y(basic_zoom_y),
     x_offset(3.0), y_offset(1.85),
     zoom_factor(1.0), zoom_speed(0.1),
-    zoom_scale(1.0), width(400), height(300), sprite(texture)
+    zoom_scale(1.0), width(400), height(300), sprite(texture), maxComputation(50.f)
 {
     if (std::is_same<Derived, fractals::julia>::value) {
         x_offset = 2.5;
@@ -118,6 +118,67 @@ template <typename Derived>
 double FractalBase<Derived>::get_hardness_coeff() { return hardness_coeff; }
 
 template <typename Derived>
+void FractalBase<Derived>::setMaxComputation(float Gflops) { maxComputation = 50.0f / 90 * Gflops; }
+
+template <typename Derived>
+void FractalBase<Derived>::setPallete(std::string name) { 
+    if (name == "HSV") {
+		palette = createHSVPalette(20000, degrees_offsetForHSV);
+		paletteSize = 20000;
+        cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+        curr_pallete = Palletes::HSV;
+    }
+    if (name == "Basic") {
+		palette = BluePlusBlackWhitePalette(20000);
+		paletteSize = 20000;
+		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+		curr_pallete = Palletes::Basic;
+    }
+    if (name == "BlackOWhite") {
+		palette = CreateBlackOWhitePalette(20000);
+		paletteSize = 20000;
+		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+		curr_pallete = Palletes::BlackOWhite;
+    }
+    if (name == "OscillatingGrayscale") {
+		palette = CreateOscillatingGrayscalePalette(20000);
+		paletteSize = 20000;
+		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+		curr_pallete = Palletes::OscillatingGrayscale;
+    }
+    if (name == "Interpolated") {
+		palette = CreateInterpolatedPalette(20000);
+		paletteSize = 20000;
+		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+		curr_pallete = Palletes::Interpolated;
+    }
+    if (name == "Pastel") {
+        palette = CreatePastelPalette(20000);
+        paletteSize = 20000;
+        cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+        curr_pallete = Palletes::Pastel;
+    }
+    if (name == "CyclicHSV") {
+		palette = CreateCyclicHSVPpalette(20000);
+		paletteSize = 20000;
+		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+		curr_pallete = Palletes::CyclicHSV;
+    }
+    if (name == "Fire") {
+		palette = CreateFirePalette(20000);
+		paletteSize = 20000;
+		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+		curr_pallete = Palletes::Fire;
+    }
+}
+
+template <typename Derived>
+Palletes FractalBase<Derived>::getPallete() { return curr_pallete; }
+
+template <typename Derived>
+void FractalBase<Derived>::SetDegreesOffsetForHSV(int degrees) { degrees_offsetForHSV = degrees; setPallete("HSV"); }
+
+template <typename Derived>
 void FractalBase<Derived>::post_processing() {
     if (antialiasing) {
         // SSAA rendering
@@ -142,12 +203,12 @@ void FractalBase<Derived>::post_processing() {
         cudaMemcpyAsync(h_total_iterations, d_total_iterations, sizeof(int), cudaMemcpyDeviceToHost, dataStream);
         cudaError_t status = cudaEventQuery(stop_rendering);
         hardness_coeff = *h_total_iterations / (width * height * 1.0);
-        if (status != cudaSuccess && (hardness_coeff > 50) || std::is_same<Derived, fractals::julia>::value) {
+        if (status != cudaSuccess && (hardness_coeff > maxComputation) || std::is_same<Derived, fractals::julia>::value) {
             cudaStreamSynchronize(stream);
         }
         image = sf::Image({ 800, 600 }, pixels);
     }
-    texture.loadFromImage(image, true);
+    texture = sf::Texture(image, true);
     sprite.setTexture(texture, true);
     sprite.setPosition({ 0, 0 });
 }
