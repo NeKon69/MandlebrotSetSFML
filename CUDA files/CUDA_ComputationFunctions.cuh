@@ -47,4 +47,15 @@ extern void cudaCheckError();
 extern void HSVtoRGB(double h, double s, double v, unsigned int& r, unsigned int& g, unsigned int& b);
 
 extern std::vector<sf::Color> CreateBlackOWhitePalette(int numColors);
-extern std::vector<sf::Color> createHSVPalette(int numColors);
+extern std::vector<sf::Color> createHSVPalette(int numColors, double startHue = 0.0);
+extern std::vector<sf::Color> BluePlusBlackWhitePalette(int numColors);
+
+extern std::vector<sf::Color> CreateOscillatingGrayscalePalette(int numColors, int frequency = 5);
+
+extern std::vector<sf::Color> CreateInterpolatedPalette(int numColors);
+
+extern std::vector<sf::Color> CreatePastelPalette(int numColors);
+
+extern std::vector<sf::Color> CreateFirePalette(int numColors);
+
+extern std::vector<sf::Color> CreateCyclicHSVPpalette(int numColors, int cycles = 1);
