@@ -1,15 +1,21 @@
 #include <TGUI/Backend/SFML-Graphics.hpp>
+#include <TGUI/Core.hpp>
+#include <TGUI/AllWidgets.hpp>
 #include "CUDA files/FractalClass.cuh"
 #include <iostream>
 #include <thread>
 
 
 void main_thread() {
+    
 
     render_state curr_qual = render_state::bad;
     render_state prev_qual = render_state::bad;
     render_state prev_qual_jul = render_state::good;
     render_state curr_qual_jul = render_state::good;
+
+    bool mandelbrot_render = true;
+	bool julia_render = true;
 
    
 
@@ -47,8 +53,6 @@ void main_thread() {
 
     bool is_dragging = false;
 
-	bool julia_render = false;
-
     sf::Clock timer_to_better_qual;
 
     FractalBase<fractals::mandelbrot> mandelbrot;
@@ -62,6 +66,50 @@ void main_thread() {
 
     window.setFramerateLimit(360);
 
+    float Gflops = measureGFLOPS(50000);
+    std::cout << "Gflops: " << Gflops << "\n";
+    mandelbrot.setMaxComputation(Gflops);
+    julia_set.setMaxComputation(Gflops);
+
+
+	tgui::Gui gui(window);
+
+    tgui::Slider::Ptr slider = tgui::Slider::create();
+    slider->setMinimum(0);
+    slider->setMaximum(360);
+    slider->onValueChange([&mandelbrot, &julia_set, &mandelbrot_render, &julia_render](float pos) {
+        if (mandelbrot.getPallete() == Palletes::HSV) 
+            mandelbrot.SetDegreesOffsetForHSV(int(pos));
+        if (julia_set.getPallete() == Palletes::HSV)
+			julia_set.SetDegreesOffsetForHSV(int(pos));
+        mandelbrot_render = true;
+        julia_render = true;
+    });
+    slider->setPosition({ 810, 40 });
+    
+
+    tgui::ComboBox::Ptr palletes = tgui::ComboBox::create();
+    palletes->setPosition({ 810, 10 });
+    palletes->addItem("HSV");
+    palletes->addItem("BlackOWhite");
+    palletes->addItem("Basic");
+    palletes->addItem("OscillatingGrayscale");
+    palletes->addItem("Fire");
+	palletes->addItem("Pastel");
+    palletes->addItem("Interpolated");
+    palletes->addItem("CyclicHSV");
+
+    palletes->setSelectedItem("HSV");
+    palletes->onItemSelect([&mandelbrot, &julia_set, &mandelbrot_render, &julia_render](tgui::String str) {
+        mandelbrot_render = true;
+        mandelbrot.setPallete(std::string(str)); 
+        julia_render = true;
+        julia_set.setPallete(std::string(str));
+    });
+
+    gui.add(palletes);
+    gui.add(slider);
+    
     sf::Vector2i mouse;
     while (window.isOpen()) {
         while (const auto event = window.pollEvent()) {
@@ -69,7 +117,7 @@ void main_thread() {
                 if(mouse.x < 800 && mouse.y < 600)
 					mouse_moved = true;
                 mouse = mm->position;
-            } 
+            }
 
             if (event->is<sf::Event::Closed>()) {
                 window.close();
@@ -89,28 +137,28 @@ void main_thread() {
 				}
                 else if (button->scancode == sf::Keyboard::Scancode::W) {
                     if (mouse.x < 800 && mouse.y < 600) {
-                        mouse_moved = true;
+                        mandelbrot_render = true;
                         curr_qual = render_state::good;
                         mandelbrot.move_fractal({ 0, 1 });
                     }
                 }
                 else if (button->scancode == sf::Keyboard::Scancode::S) {
 					if (mouse.x < 800 && mouse.y < 600) {
-						mouse_moved = true;
+                        mandelbrot_render = true;
 						curr_qual = render_state::good;
 						mandelbrot.move_fractal({ 0, -1 });
 					}
                 }
                 else if (button->scancode == sf::Keyboard::Scancode::A) {
 					if (mouse.x < 800 && mouse.y < 600) {
-						mouse_moved = true;
+                        mandelbrot_render = true;
 						curr_qual = render_state::good;
 						mandelbrot.move_fractal({ 1, 0 });
 					}
                 }
 				else if (button->scancode == sf::Keyboard::Scancode::D) {
 					if (mouse.x < 800 && mouse.y < 600) {
-						mouse_moved = true;
+                        mandelbrot_render = true;
 						curr_qual = render_state::good;
 						mandelbrot.move_fractal({ -1, 0 });
 					}
@@ -119,11 +167,13 @@ void main_thread() {
             
             if (const auto* mouseWheelScrolled = event->getIf<sf::Event::MouseWheelScrolled>()) {
                 if (mouse.x < 800 && mouse.y < 600) {
+					mandelbrot_render = true;
                     curr_qual = render_state::good;
                     mandelbrot.handleZoom(mouseWheelScrolled->delta, mouse);
                 }
 				else if (mouse.x > window.getSize().x - 800 && mouse.y < 600) {
 					julia_set.handleZoom(mouseWheelScrolled->delta, mouse);
+                    julia_render = true;
                     curr_qual_jul = render_state::good;
 				}
             }
@@ -134,11 +184,13 @@ void main_thread() {
                     if (mouse.x < 800 && mouse.y < 600) {
                         pressed = true;
                         mouse_moved = true;
+                        mandelbrot_render = true;
                         curr_qual = render_state::good;
                         mandelbrot.start_dragging(mouse);
                     }
 					else if (mouse.x > window.getSize().x - 800 && mouse.y < 600) {
 						julia_set.start_dragging(mouse);
+						julia_render = true;
                         curr_qual_jul = render_state::good;
 					}
                 }
@@ -160,6 +212,7 @@ void main_thread() {
                 if (mouse.x < 800 && mouse.y < 600) {
                     mouse_moved = true;
                     if (mandelbrot.get_is_dragging()) {
+                        mandelbrot_render = true;
                         curr_qual = render_state::good;
                         mandelbrot.dragging({ mouse.x, mouse.y });
                     }
@@ -167,16 +220,17 @@ void main_thread() {
                 else if(mouse.x > window.getSize().x - 800 && mouse.y < 600 && julia_set.get_is_dragging()) {
 					if (julia_set.get_is_dragging()) {
 						julia_set.dragging({ mouse.x, mouse.y });
+						julia_render = true;
                         curr_qual_jul = render_state::good;
 					}
 				}
             }
+            gui.handleEvent(*event);
         }
-
         ++fps;
 
 
-        if (curr_qual != render_state::best || prev_qual != render_state::best && !pressed) {
+        if (curr_qual != render_state::best || prev_qual != render_state::best || mandelbrot_render && !pressed) {
 			prev_qual = curr_qual;
             std::string quality = curr_qual == render_state::best ? "Best" : curr_qual == render_state::good ? "Good" : "Bad";
             mandelbrot.render(curr_qual);
@@ -194,6 +248,7 @@ void main_thread() {
             window.draw(text);
             window.draw(hardness);
             window.draw(hardness_julia);
+            gui.draw();
 
             auto time = timer.restart();;
             window.display();
@@ -212,9 +267,10 @@ void main_thread() {
                 }
                 timer_to_better_qual.restart();
             }
+            mandelbrot_render = false;
         }
 
-        if(mouse_moved && !block_julia) {
+        if(mouse_moved || julia_render && !block_julia) {
             drawen = true;
             zx = -(mandelbrot.get_x_offset() - (mouse.x / mandelbrot.get_zoom_x()));
 
@@ -237,6 +293,7 @@ void main_thread() {
             window.draw(text);
             window.draw(hardness);
             window.draw(hardness_julia);
+            gui.draw();
 
             window.display();
 
@@ -244,9 +301,10 @@ void main_thread() {
             
 
 			mouse_moved = false;
+            julia_render = false;
 		}
 
-        else if (curr_qual_jul != render_state::best || prev_qual_jul != render_state::best) {
+        else if (curr_qual_jul != render_state::best || prev_qual_jul != render_state::best || julia_render) {
             prev_qual_jul = curr_qual_jul;
             std::string quality = curr_qual_jul == render_state::best ? "Best" : "Good";
 
@@ -265,6 +323,7 @@ void main_thread() {
             window.draw(text);
             window.draw(hardness);
             window.draw(hardness_julia);
+            gui.draw();
             window.display();
             
 
@@ -273,6 +332,8 @@ void main_thread() {
             if (quality == "Good") {
                 curr_qual_jul = render_state::best;
             }
+
+			julia_render = false;
         }
         else {
 			window.clear();
@@ -280,6 +341,7 @@ void main_thread() {
             window.draw(text);
             window.draw(hardness);
             window.draw(hardness_julia);
+            gui.draw();
             window.display();
         }
 
