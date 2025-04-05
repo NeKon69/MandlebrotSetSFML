@@ -47,6 +47,7 @@ void main_thread() {
     bool is_mouse_pressed = true;
     bool is_first_mouse_move = true;
     bool is_dragging_fractal = false;
+    bool timelapse_rendering = false;
 
     // --- Timers and Clock ---
     sf::Clock mandelbrot_render_timer;
@@ -175,6 +176,11 @@ void main_thread() {
                         mandelbrot_set.move_fractal({ -1, 0 });
                     }
                 }
+                else if (key_press_event->scancode == sf::Keyboard::Scancode::T) {
+                    if(timelapse_rendering) julia_set.stop_timelapse();
+                    else julia_set.start_timelapse();
+                    timelapse_rendering = !timelapse_rendering;
+                }
             }
 
             if (const auto* mouse_wheel_event = event->getIf<sf::Event::MouseWheelScrolled>()) {
@@ -293,8 +299,28 @@ void main_thread() {
             should_render_mandelbrot = false;
         } // --- End Mandelbrot Rendering ---
 
+        if (timelapse_rendering) {
+            julia_set.update_timelapse();
+
+            render_buffer.clear();
+            window.clear();
+
+            render_buffer.draw(mandelbrot_set);
+            render_buffer.draw(julia_set);
+
+            render_buffer.display();
+
+            window.draw(sf::Sprite(render_buffer.getTexture()));
+            window.draw(fps_text);
+            window.draw(mandelbrot_hardness_text);
+            window.draw(julia_hardness_text);
+            gui.draw();
+
+            window.display();
+        }
+
         // --- Julia Rendering (Conditional on Mouse Move in Mandelbrot Area) ---
-        if (has_mouse_moved_mandelbrot_area && !block_julia_updates)
+        else if (has_mouse_moved_mandelbrot_area && !block_julia_updates)
         {
             is_drawing_julia = true;
             julia_zx = -(mandelbrot_set.get_x_offset() - (current_mouse_pos.x / mandelbrot_set.get_zoom_x()));
@@ -324,6 +350,7 @@ void main_thread() {
             has_mouse_moved_mandelbrot_area = false;
             should_render_julia = false;
         } // --- End Julia Rendering (Conditional on Mouse Move in Mandelbrot Area) ---
+
         else if (julia_quality != render_state::best || previous_julia_quality != render_state::best || should_render_julia)
         {
             previous_julia_quality = julia_quality;
@@ -356,6 +383,8 @@ void main_thread() {
 
             should_render_julia = false;
         }
+
+
         else {
             // --- No Fractal Render Needed, Just UI ---
             window.clear();

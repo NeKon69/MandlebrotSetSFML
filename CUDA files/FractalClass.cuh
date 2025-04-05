@@ -5,6 +5,7 @@
 #include "benchmark.cuh"
 #include <TGUI/Backend/SFML-Graphics.hpp>
 #include <cuda_runtime.h>
+#include <random>
 
 namespace fractals {
 	struct mandelbrot{};
@@ -31,72 +32,92 @@ enum class render_state {
     best
 };
 
+struct timelapse_propertier {
+    float zx = 0, zy = 0;
+    float velocityX = 0, velocityY = 0;
+};
+
 template <typename Derived>
 class FractalBase : public sf::Transformable, public sf::Drawable {
 protected:
+    // Fractal properties
     unsigned int max_iterations;
-
     double basic_zoom_x;
     double basic_zoom_y;
-
     double zoom_x;
     double zoom_y;
-
     double x_offset;
     double y_offset;
-
     double zoom_factor;
     double zoom_speed;
+    double zoom_scale;
+    float hardness_coeff = 0.f;
+    Palletes curr_pallete = Palletes::HSV;
+    unsigned int degrees_offsetForHSV = 0;
+    unsigned int drawen_iterations = 0;
+    float maxComputation;
 
+    // Dragging properties
     sf::Vector2i drag_start_pos;
     bool is_dragging = false;
 
+    // Palette properties
     sf::Color* d_palette;
-
     std::vector<sf::Color> palette;
     int paletteSize;
 
+    // Pixel buffers
     unsigned char* d_pixels;
     size_t ssaa_buffer_size = 0;
-
     unsigned char* pixels;
     size_t ssaa_limit_dst = 0;
-
-	unsigned char* ssaa_buffer;
-
+    unsigned char* ssaa_buffer;
     unsigned char* compressed;
 
-	bool is_paused = false;
+    // Rendering properties
+    bool is_paused = false;
+    render_state state = render_state::good;
+    bool antialiasing = true;
+    unsigned char counter = 0;
 
-	render_state state = render_state::good;
-	bool antialiasing = true;
-
+    // CUDA properties
     bool* stopFlagDevice;
     std::atomic<bool> stopFlagCpu;
-
-    double zoom_scale;
-
     unsigned int width;
     unsigned int height;
-
     cudaStream_t stream;
     cudaStream_t dataStream;
     cudaEvent_t start_rendering, stop_rendering;
-
-    unsigned char counter = 0;
-
     unsigned int* d_total_iterations;
     unsigned int* h_total_iterations;
-    float maxComputation;
 
+    // SFML properties
     sf::Image image;
     sf::Texture texture;
     sf::Sprite sprite;
 
-    float hardness_coeff = 0.f;
+    // Iteration lines
+    std::vector<sf::Vertex> iterationpoints;
+    sf::VertexBuffer iterationline;
 
-    Palletes curr_pallete = Palletes::HSV;
-    unsigned int degrees_offsetForHSV = 0;
+    // Timelapse Properties
+    std::random_device rd;
+	std::mt19937 gen;
+	std::uniform_real_distribution<float> disX, disY;
+    std::uniform_real_distribution<float> disVelX, disVelY;
+    timelapse_propertier timelapse;
+    sf::Clock clock;
+    float velocityDiffX = 0, velocityDiffY = 0;
+    float diffX = 0, diffY = 0;
+    float initialVelocityX = 0, initialVelocityY = 0;
+    float targetVelocityX = 0;
+    float targetVelocityY = 0;
+    float targetSpeed = 0.5f;
+    unsigned int directionChangeInterval = 2000;
+    float boundaryMargin = 0.1f;
+    bool smoothing = false;
+
+
 public:
     FractalBase();
     ~FractalBase();
@@ -104,29 +125,19 @@ public:
     /*@returns amount of max_iterations*/
     unsigned int get_max_iters();
 
-
-
     /*@returns mouse currently dragging state*/
     bool get_is_dragging();
 
     double get_x_offset();
-
-	double get_y_offset();
-
-	double get_zoom_x();
-
-	double get_zoom_y();
-
+    double get_y_offset();
+    double get_zoom_x();
+    double get_zoom_y();
     double get_zoom_scale();
-
     double get_hardness_coeff();
 
     void setMaxComputation(float Gflops);
-
     void setPallete(std::string name);
-
     Palletes getPallete();
-
     void SetDegreesOffsetForHSV(int degrees);
 
     /*@brief sets max_iterations to new given number
@@ -151,6 +162,8 @@ public:
         render_state quality,
         double mouse_x, double mouse_y
     );
+
+    void drawIterationLines(sf::Vector2i mouse_pos);
 
     /**
      * @brief Draws the rendered fractal image onto the SFML render target.
@@ -187,4 +200,10 @@ public:
     * @param offset: x, y
     */
     void move_fractal(sf::Vector2i offset);
+
+    void start_timelapse();
+
+	void update_timelapse();
+
+	void stop_timelapse();
 };

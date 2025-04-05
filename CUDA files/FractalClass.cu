@@ -3,6 +3,8 @@
 #include <iostream>
 #include <thread>
 #include <functional>
+#include <random>
+#include <math.h>
 
 bool running_other_core = false;
 
@@ -30,7 +32,11 @@ FractalBase<Derived>::FractalBase()
     zoom_x(basic_zoom_x), zoom_y(basic_zoom_y),
     x_offset(3.0), y_offset(1.85),
     zoom_factor(1.0), zoom_speed(0.1),
-    zoom_scale(1.0), width(400), height(300), sprite(texture), maxComputation(50.f)
+    zoom_scale(1.0), width(400), height(300), sprite(texture), 
+    maxComputation(50.f), iterationline(sf::PrimitiveType::LineStrip),
+    gen(rd()), disX(-2.f, 2.f), disY(-1.5f, 1.5f), 
+    disVelY(-0.1f, 0.1f), disVelX(-0.13f, 0.13f)
+
 {
     if (std::is_same<Derived, fractals::julia>::value) {
         x_offset = 2.5;
@@ -73,6 +79,8 @@ FractalBase<Derived>::FractalBase()
     cudaMallocHost(&h_total_iterations , sizeof(int));
 
     cudaStreamCreate(&dataStream);
+
+    iterationpoints.resize(max_iterations);
 }
 
 template <typename Derived>
@@ -373,13 +381,73 @@ void FractalBase<fractals::julia>::render(
     post_processing();
 }
 
+void FractalBase<fractals::mandelbrot>::drawIterationLines(sf::Vector2i mouse_pos) {
+    int curr_iter = 0;
+    double zr = 0.0;
+    double zi = 0.0;
 
+    if (max_iterations >= iterationpoints.size()) {
+        iterationpoints.resize(max_iterations * 2);
+    }
+
+    double cr = mouse_pos.x / zoom_x - x_offset;
+    double ci = mouse_pos.y / zoom_y - y_offset;
+
+    while (curr_iter < max_iterations && zr * zr + zi * zi < 4.0) {
+        double tmp_zr = zr;
+        zr = zr * zr - zi * zi + cr;
+        zi = 2.0 * tmp_zr * zi + ci;
+
+        double x = (zr + x_offset) * zoom_x;
+        double y = (zi + y_offset) * zoom_y;
+
+        iterationpoints[curr_iter].position = sf::Vector2f(x, y);
+        iterationpoints[curr_iter].color = sf::Color::Red;
+        curr_iter++;
+    }
+
+    iterationline.create(curr_iter);
+    iterationline.update(iterationpoints.data());
+    drawen_iterations = curr_iter;
+}
+
+void FractalBase<fractals::julia>::drawIterationLines(sf::Vector2i mouse_pos) {
+    int curr_iter = 0;
+    double zr = 0.0;
+    double zi = 0.0;
+
+    // Calculate cr and ci based on the mouse position and current view parameters
+    double cr = x_offset + (mouse_pos.x / zoom_x);
+    double ci = y_offset + (mouse_pos.y / zoom_y);
+
+    while (curr_iter < max_iterations && zr * zr + zi * zi < 4.0) {
+        double tmp_zr = zr;
+        zr = zr * zr - zi * zi + cr;
+        zi = 2.0 * tmp_zr * zi + ci;
+
+        // Map the complex number z back to screen coordinates
+        float x = static_cast<float>((zr - x_offset) * zoom_x);
+        float y = static_cast<float>((zi - y_offset) * zoom_y);
+
+        if (curr_iter < iterationpoints.size()) {
+            iterationpoints[curr_iter].position = sf::Vector2f(x, y);
+            iterationpoints[curr_iter].color = sf::Color::Red;
+        }
+
+        curr_iter++;
+    }
+
+    iterationline.create(curr_iter);
+    iterationline.update(iterationpoints.data());
+    drawen_iterations = curr_iter;
+}
 
 
 template <typename Derived>
 void FractalBase<Derived>::draw(sf::RenderTarget& target, sf::RenderStates states) const {
     states.transform *= getTransform();
     target.draw(sprite, states);
+    target.draw(iterationline, 0, drawen_iterations, states);
 }
 template <typename Derived>
 void FractalBase<Derived>::handleZoom(float wheel_delta, const sf::Vector2i mouse_pos) {
@@ -435,6 +503,103 @@ template <typename Derived>
 void FractalBase<Derived>::move_fractal(sf::Vector2i offset) {
     x_offset += offset.x / (zoom_x * zoom_scale);
 	y_offset += offset.y / (zoom_y * zoom_scale);
+}
+
+void FractalBase<fractals::julia>::start_timelapse() {
+    timelapse.zx = disX(gen);
+    timelapse.zy = disY(gen);
+    timelapse.velocityX = disVelX(gen);
+	timelapse.velocityY = disVelY(gen);
+}
+
+float getBoundedVelocity(float currentPos, float currentVel, float minPos, float maxPos, float minVel, float maxVel) {
+    const float margin = 0.2f;
+
+    if (currentPos > maxPos - margin && currentVel > 0) {
+        return std::max(-maxVel, currentVel * -0.5f);
+    }
+
+    else if (currentPos < minPos + margin && currentVel < 0) {
+        return std::min(maxVel, currentVel * -0.5f);
+    }
+
+    return minVel + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX / (maxVel - minVel)));
+}
+
+void FractalBase<fractals::julia>::update_timelapse() {
+    const auto elapsed = clock.getElapsedTime();
+    const auto elapsedMs = elapsed.asMilliseconds();
+    constexpr float frameTimeMs = 1000.0f / 360.0f;
+
+    if (elapsedMs <= frameTimeMs) return;
+
+    float deltaTime = elapsedMs / 1000.0f;
+    clock.restart();
+
+    constexpr float GRAVITATIONAL_STRENGTH = 0.1f;
+    constexpr float EVENT_HORIZON = 0.1f;
+    constexpr float MAX_VEL = 20.0f;
+    constexpr float VELOCITY_DAMPING = 0.9995f;
+    constexpr float TARGET_CHANGE_TIME = 2.0f;
+    constexpr float TRANSITION_SPEED = 3.5f;
+
+    static float timeToTargetChange = TARGET_CHANGE_TIME;
+    static float targetZX = 0.0f;
+    static float targetZY = 0.0f;
+    static float currentTargetZX = 0.0f;
+    static float currentTargetZY = 0.0f;
+
+    timeToTargetChange -= deltaTime;
+    if (timeToTargetChange <= 0) {
+        timeToTargetChange = TARGET_CHANGE_TIME;
+        targetZX = (static_cast<float>(rand()) / RAND_MAX) * 1.0f - 0.5f;
+        targetZY = (static_cast<float>(rand()) / RAND_MAX) * 1.0f - 0.5f;
+    }
+
+    currentTargetZX += (targetZX - currentTargetZX) * TRANSITION_SPEED * deltaTime;
+    currentTargetZY += (targetZY - currentTargetZY) * TRANSITION_SPEED * deltaTime;
+
+    float dx = currentTargetZX - timelapse.zx;
+    float dy = currentTargetZY - timelapse.zy;
+    float distanceSq = dx * dx + dy * dy + 0.0001f;
+
+    timelapse.velocityX += GRAVITATIONAL_STRENGTH * dx * deltaTime;
+    timelapse.velocityY += GRAVITATIONAL_STRENGTH * dy * deltaTime;
+
+    float distance = sqrt(distanceSq);
+    if (distance < EVENT_HORIZON) {
+        float angle = atan2(dy, dx);
+        float boost = (1.0f - (distance / EVENT_HORIZON)) * 4.0f;
+        timelapse.velocityX += cos(angle + 3.14159265359f / 2.0f) * boost * deltaTime;
+        timelapse.velocityY += sin(angle + 3.14159265359f / 2.0f) * boost * deltaTime;
+    }
+
+    timelapse.velocityX *= VELOCITY_DAMPING;
+    timelapse.velocityY *= VELOCITY_DAMPING;
+    timelapse.velocityX = std::clamp(timelapse.velocityX, -MAX_VEL, MAX_VEL);
+    timelapse.velocityY = std::clamp(timelapse.velocityY, -MAX_VEL, MAX_VEL);
+
+    timelapse.zx += timelapse.velocityX * deltaTime;
+    timelapse.zy += timelapse.velocityY * deltaTime;
+
+    constexpr float BOUNDARY = 2.0f;
+    if (std::abs(timelapse.zx) > BOUNDARY) {
+        timelapse.zx = std::copysign(BOUNDARY, timelapse.zx);
+        timelapse.velocityX *= -0.5f;
+    }
+    if (std::abs(timelapse.zy) > BOUNDARY) {
+        timelapse.zy = std::copysign(BOUNDARY, timelapse.zy);
+        timelapse.velocityY *= -0.5f;
+    }
+
+    render(render_state::good, timelapse.zx, timelapse.zy);
+}
+
+void FractalBase<fractals::julia>::stop_timelapse() {
+	timelapse.zx = 0;
+	timelapse.zy = 0;
+	timelapse.velocityX = 0;
+	timelapse.velocityY = 0;
 }
 
 template class FractalBase<fractals::mandelbrot>;
