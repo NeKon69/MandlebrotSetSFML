@@ -3,7 +3,10 @@
 #include <vector>
 #include <cmath>
 #include <iostream>
+<<<<<<< HEAD
 #include <random>
+=======
+>>>>>>> main
 
 
 inline static void cudaCheckError() {
@@ -211,6 +214,7 @@ std::vector<sf::Color> CreateFirePalette(int numColors) {
     return palette;
 }
 
+<<<<<<< HEAD
 std::vector<sf::Color> CreateWaterPalette(int numColors) {
     std::vector<sf::Color> palette;
     for (int i = 0; i < numColors; ++i) {
@@ -239,6 +243,8 @@ std::vector<sf::Color> CreateWaterPalette(int numColors) {
 }
 
 
+=======
+>>>>>>> main
 
 std::vector<sf::Color> CreateCyclicHSVPpalette(int numColors, int cycles) {
     std::vector<sf::Color> palette;
@@ -254,6 +260,7 @@ std::vector<sf::Color> CreateCyclicHSVPpalette(int numColors, int cycles) {
     return palette;
 }
 
+<<<<<<< HEAD
 
 std::vector<sf::Color> CreateFractalPatternPalette(int numColors) {
     std::vector<sf::Color> palette;
@@ -695,6 +702,8 @@ std::vector<sf::Color> CreateDeepSpaceWideVeinsPalette(int numColors) {
 
 
 
+=======
+>>>>>>> main
 /**
  * @brief Applies 4x Super-Sampling Anti-Aliasing (SSAA) to reduce aliasing artifacts.
  * This function takes a high-resolution image (2x width and height of the desired output)

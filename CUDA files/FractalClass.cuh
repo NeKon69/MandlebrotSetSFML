@@ -21,6 +21,7 @@ enum class Palletes {
     Pastel,
     OscillatingGrayscale,
     Interpolated,
+<<<<<<< HEAD
     CyclicHSV,
     FractalPattern,
     PerlinNoise,
@@ -32,6 +33,9 @@ enum class Palletes {
     IceCave,
     AccretionDisk,
     ElectricNebula
+=======
+    CyclicHSV
+>>>>>>> main
 };
 
 extern bool running_other_core;

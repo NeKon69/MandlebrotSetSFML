@@ -46,7 +46,10 @@ __global__ void fractal_rendering(
         float z_real = 0.0;
         float z_imag = 0.0;
         float current_iteration = 0;
+<<<<<<< HEAD
         float modulus;
+=======
+>>>>>>> main
 
         while (complex_abs2(z_real, z_imag) < 4 && current_iteration < maxIterations) {
             new_real = complex_mult_real(z_real, z_imag, z_real, z_imag) + real;
@@ -76,6 +79,7 @@ __global__ void fractal_rendering(
         }
 
         else {
+<<<<<<< HEAD
 
             modulus = hypot(z_real, z_imag);
             float escape_radius = 2.0;
@@ -84,6 +88,10 @@ __global__ void fractal_rendering(
                 current_iteration = current_iteration + 1 - nu;
             //}
 
+=======
+            // Smooth iteration count
+            current_iteration = current_iteration + 1 - dev_log2(dev_log2(dev_abs(dev_sqrt(complex_abs2(z_real, z_imag)))));
+>>>>>>> main
             // Calculate gradient value
             float gradient = Gradient(current_iteration, maxIterations);
             // Map gradient to palette index

@@ -101,6 +101,7 @@ void main_thread() {
     palette_combobox->addItem("Pastel");
     palette_combobox->addItem("Interpolated");
     palette_combobox->addItem("CyclicHSV");
+<<<<<<< HEAD
     palette_combobox->addItem("FractalPattern");
     palette_combobox->addItem("PerlinNoise");
     palette_combobox->addItem("Water");
@@ -110,6 +111,8 @@ void main_thread() {
     palette_combobox->addItem("IceCave");
     palette_combobox->addItem("ElectricNebula");
     palette_combobox->addItem("AccretionDisk");
+=======
+>>>>>>> main
 
     palette_combobox->setSelectedItem("HSV");
     palette_combobox->onItemSelect([&](tgui::String str) {

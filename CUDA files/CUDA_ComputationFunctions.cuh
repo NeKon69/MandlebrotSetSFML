@@ -58,6 +58,7 @@ extern std::vector<sf::Color> CreatePastelPalette(int numColors);
 
 extern std::vector<sf::Color> CreateFirePalette(int numColors);
 
+<<<<<<< HEAD
 extern std::vector<sf::Color> CreateWaterPalette(int numColors);
 
 extern std::vector<sf::Color> CreateCyclicHSVPpalette(int numColors, int cycles = 1);
@@ -77,3 +78,6 @@ extern std::vector<sf::Color> CreateAccretionDiskPalette(int numColors, float po
 extern std::vector<sf::Color> CreateElectricNebulaPalette(int numColors);
 
 extern std::vector<sf::Color> CreateDeepSpaceWideVeinsPalette(int numColors);
+=======
+extern std::vector<sf::Color> CreateCyclicHSVPpalette(int numColors, int cycles = 1);
+>>>>>>> main

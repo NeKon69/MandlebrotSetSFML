@@ -178,6 +178,7 @@ void FractalBase<Derived>::setPallete(std::string name) {
 		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
 		curr_pallete = Palletes::Fire;
     }
+<<<<<<< HEAD
     if (name == "FractalPattern") {
 		palette = CreateFractalPatternPalette(20000);
 		paletteSize = 20000;
@@ -233,6 +234,8 @@ void FractalBase<Derived>::setPallete(std::string name) {
 		curr_pallete = Palletes::ElectricNebula;
     }
 
+=======
+>>>>>>> main
 }
 
 template <typename Derived>
