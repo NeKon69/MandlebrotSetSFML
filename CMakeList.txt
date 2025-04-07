@@ -1,0 +1,90 @@
+cmake_minimum_required(VERSION 3.20)
+project(MandlebrotProject LANGUAGES CXX CUDA)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_ARCHITECTURES "native")
+
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
+
+find_package(CUDA REQUIRED)
+find_package(SFML 3 COMPONENTS graphics window system REQUIRED)
+find_package(GLEW REQUIRED)
+find_package(OpenGL REQUIRED)
+find_package(Threads REQUIRED)
+
+if(WIN32)
+    find_package(freetype REQUIRED)
+endif()
+
+find_path(TGUI_INCLUDE_DIR tgui/tgui.hpp PATH_SUFFIXES tgui)
+find_library(TGUI_LIBRARY tgui)
+
+find_path(GLM_INCLUDE_DIR glm/glm.hpp)
+find_path(PCG_INCLUDE_DIR pcg_random.hpp)
+find_path(FASTNOISE_INCLUDE_DIR FastNoiseLite.h)
+
+file(GLOB_RECURSE SOURCES 
+    src/*.cpp 
+    src/*.cu 
+    src/*.cuh
+    include/*.h 
+    include/*.hpp
+)
+
+add_executable(${PROJECT_NAME} ${SOURCES})
+
+target_include_directories(${PROJECT_NAME} PRIVATE
+    include
+    src
+    ${CUDA_INCLUDE_DIRS}
+    ${SFML_INCLUDE_DIR}
+    ${GLEW_INCLUDE_DIRS}
+    ${TGUI_INCLUDE_DIR}
+    ${GLM_INCLUDE_DIR}
+    ${PCG_INCLUDE_DIR}
+    ${FASTNOISE_INCLUDE_DIR}
+    ${FREETYPE_INCLUDE_DIRS}
+)
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    $<$<CONFIG:Debug>:_DEBUG>
+    $<$<CONFIG:Release>:NDEBUG>
+    SFML_STATIC
+    TGUI_STATIC
+    GLM_FORCE_CTOR_INIT
+)
+
+if(MSVC)
+    target_compile_options(${PROJECT_NAME} PRIVATE /W4 /MP /std:c++latest)
+else()
+    target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -pedantic)
+endif()
+
+target_link_libraries(${PROJECT_NAME}
+    ${SFML_LIBRARIES}
+    ${GLEW_LIBRARIES}
+    ${TGUI_LIBRARY}
+    ${CUDA_LIBRARIES}
+    ${FREETYPE_LIBRARIES}
+    OpenGL::GL
+    Threads::Threads
+)
+
+if(WIN32)
+    target_link_libraries(${PROJECT_NAME} winmm gdi32 opengl32)
+else()
+    target_link_libraries(${PROJECT_NAME} X11 dl)
+endif()
+
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    CUDA_SEPARABLE_COMPILATION ON
+    CUDA_RESOLVE_DEVICE_SYMBOLS ON
+)
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(${PROJECT_NAME} PRIVATE -stdlib=libc++)
+endif()
