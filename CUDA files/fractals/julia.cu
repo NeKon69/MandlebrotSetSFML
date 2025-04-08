@@ -33,14 +33,14 @@ __global__ void fractal_rendering(
 		float z_real = x / zoom_x - x_offset;;
 		float z_imag = y / zoom_y - y_offset;
 		float current_iteration = 0;
+		float z_comp = z_real * z_real + z_imag * z_imag;
 
-		while (complex_abs2(z_real, z_imag) < 4 && current_iteration < maxIterations) {
-			new_real = complex_mult_real(z_real, z_imag, z_real, z_imag) + real;
-			new_imag = complex_mult_imag(z_real, z_imag, z_real, z_imag) + imag;
+		while (z_comp < 4 && current_iteration < maxIterations) {
+			new_real = (z_real * z_real - z_imag * z_imag) + real;
+			z_imag = 2 * z_real * z_imag + imag;
 			z_real = new_real;
-			z_imag = new_imag;
+			z_comp = z_real * z_real + z_imag * z_imag;
 			current_iteration++;
-
 		}
 
 
@@ -64,8 +64,7 @@ __global__ void fractal_rendering(
 		}
 
 		else {
-			// Smooth iteration count
-			current_iteration = current_iteration + 1 - dev_log2(dev_log2(dev_abs(dev_sqrt(complex_abs2(z_real, z_imag)))));
+			current_iteration = current_iteration + 1 - log2(log2(abs(sqrt(z_real * z_real + z_imag * z_imag))));
 			// Calculate gradient value
 			float gradient = Gradient(current_iteration, maxIterations);
 			// Map gradient to palette index

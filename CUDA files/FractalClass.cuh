@@ -21,7 +21,6 @@ enum class Palletes {
     Pastel,
     OscillatingGrayscale,
     Interpolated,
-<<<<<<< HEAD
     CyclicHSV,
     FractalPattern,
     PerlinNoise,
@@ -33,9 +32,6 @@ enum class Palletes {
     IceCave,
     AccretionDisk,
     ElectricNebula
-=======
-    CyclicHSV
->>>>>>> main
 };
 
 extern bool running_other_core;
@@ -95,6 +91,8 @@ protected:
     unsigned char counter = 0;
 
     // CUDA properties
+    dim3 dimGrid;
+    dim3 dimBlock;
     bool* stopFlagDevice;
     std::atomic<bool> stopFlagCpu;
     unsigned int width;
@@ -191,7 +189,7 @@ public:
      * @param wheel_delta The direction and magnitude of the mouse wheel scroll.
      * @param mouse_pos The current mouse position in window coordinates.
      */
-    void handleZoom(float wheel_delta, const sf::Vector2i mouse_pos);
+    void handleZoom(double wheel_delta, const sf::Vector2i mouse_pos);
 
     /**
      * @brief Starts the dragging operation when the mouse button is pressed.

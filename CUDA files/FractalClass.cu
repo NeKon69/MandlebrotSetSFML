@@ -178,7 +178,6 @@ void FractalBase<Derived>::setPallete(std::string name) {
 		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
 		curr_pallete = Palletes::Fire;
     }
-<<<<<<< HEAD
     if (name == "FractalPattern") {
 		palette = CreateFractalPatternPalette(20000);
 		paletteSize = 20000;
@@ -233,9 +232,6 @@ void FractalBase<Derived>::setPallete(std::string name) {
 		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
 		curr_pallete = Palletes::ElectricNebula;
     }
-
-=======
->>>>>>> main
 }
 
 template <typename Derived>
@@ -328,20 +324,33 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
 
     double render_zoom_x = zoom_x * zoom_scale;
     double render_zoom_y = zoom_y * zoom_scale;
-
-    dim3 dimBlock(32, 32);
-    dim3 dimGrid(
-        (width + dimBlock.x - 1) / dimBlock.x,
-        (height + dimBlock.y - 1) / dimBlock.y
-    );
-
-	size_t len = width * height * 4;
+    size_t len = width * height * 4;
     cudaEventRecord(start_rendering, stream);
-    fractal_rendering<<<dimGrid, dimBlock, 0, stream>>>(
-        d_pixels, len, width, height, float(render_zoom_x), float(render_zoom_y),
-        float(x_offset), float(y_offset), d_palette, paletteSize,
-        float(max_iterations), d_total_iterations
+    if (render_zoom_x > 1e7) {
+        dimBlock = dim3(10, 10);
+        dimGrid = dim3(
+            (width + dimBlock.x - 1) / dimBlock.x,
+            (height + dimBlock.y - 1) / dimBlock.y
         );
+        fractal_rendering<<<dimGrid, dimBlock, 0, stream>>>(
+            d_pixels, len, width, height, render_zoom_x, render_zoom_y,
+            x_offset, y_offset, d_palette, paletteSize,
+            max_iterations, d_total_iterations
+            );
+    }
+    else {
+        dimBlock = dim3(32, 32);
+        dimGrid = dim3(
+            (width + dimBlock.x - 1) / dimBlock.x,
+            (height + dimBlock.y - 1) / dimBlock.y
+        );
+
+        fractal_rendering<<<dimGrid, dimBlock, 0, stream>>>(
+            d_pixels, len, width, height, float(render_zoom_x), float(render_zoom_y),
+            float(x_offset), float(y_offset), d_palette, paletteSize,
+            float(max_iterations), d_total_iterations
+            );
+    }
 
     cudaError_t err = cudaGetLastError();
     while (err != cudaSuccess) {
@@ -349,9 +358,9 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
         dimBlock.y -= 2;
         dimGrid = (width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y;
         fractal_rendering<<<dimGrid, dimBlock, 0, stream>>>(
-            d_pixels, len, width, height, float(render_zoom_x), float(render_zoom_y),
-            float(x_offset), float(y_offset), d_palette, paletteSize,
-            float(max_iterations), d_total_iterations
+            d_pixels, len, width, height, render_zoom_x, render_zoom_y,
+            x_offset, y_offset, d_palette, paletteSize,
+            max_iterations, d_total_iterations
             );
         err = cudaGetLastError();
         if (dimBlock.x < 8) {
@@ -508,7 +517,7 @@ void FractalBase<Derived>::draw(sf::RenderTarget& target, sf::RenderStates state
     target.draw(iterationline, 0, drawen_iterations, states);
 }
 template <typename Derived>
-void FractalBase<Derived>::handleZoom(float wheel_delta, const sf::Vector2i mouse_pos) {
+void FractalBase<Derived>::handleZoom(double wheel_delta, const sf::Vector2i mouse_pos) {
     double old_zoom_x = zoom_x;
     double old_zoom_y = zoom_y;
     double old_x_offset = x_offset;

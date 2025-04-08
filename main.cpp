@@ -7,9 +7,17 @@
 #include <chrono>
 
 void main_thread() {
+	// --- Interaction State Variables ---
+    enum InteractionType { NONE, ZOOM, OTHER };
+    static InteractionType last_interaction = NONE;
+    static float time_since_interaction_end = 0.0f;
+    static float time_since_interaction_end_julia = 0.0f;
+    const float ZOOM_DELAY = 1000;
+    sf::Clock clock;
+
     // --- Render State Variables ---
-    render_state mandelbrot_quality = render_state::bad;
-    render_state previous_mandelbrot_quality = render_state::bad;
+    render_state mandelbrot_quality = render_state::good;
+    render_state previous_mandelbrot_quality = render_state::good;
     render_state julia_quality = render_state::good;
     render_state previous_julia_quality = render_state::good;
 
@@ -41,13 +49,27 @@ void main_thread() {
     sf::Vector2i initial_mouse_pos; // Base mouse position, might not be used
     sf::Vector2i current_mouse_pos;
 
-    double julia_zx, julia_zy; // Complex coordinates for Julia set calculation
+    double julia_zx = 0, julia_zy = 0; // Complex coordinates for Julia set calculation
 
     bool is_drawing_julia = false;
-    bool is_mouse_pressed = true;
+    bool is_mouse_pressed = false;
     bool is_first_mouse_move = true;
     bool is_dragging_fractal = false;
     bool timelapse_rendering = false;
+    bool is_zooming = false;
+    bool is_mouse_in_area = false;
+    bool is_mouse_pressed_in_area = is_mouse_pressed && is_mouse_in_area;
+    bool is_interacting = is_zooming || is_mouse_pressed_in_area;
+
+    bool is_zooming_julia = false;
+    bool is_mouse_in_arear_julia = false;
+    bool is_mouse_pressed_in_area_julia = false;
+    bool is_interacting_julia = is_zooming_julia || is_mouse_pressed_in_area;
+    bool should_improve_quality = false;
+    bool should_improve_quality_julia = false;
+    bool is_mouse_pressed_julia = false;
+    bool has_mouse_moved_julia_area = false;
+    sf::Time time_since_julia_interaction_end;
 
     // --- Timers and Clock ---
     sf::Clock mandelbrot_render_timer;
@@ -101,7 +123,6 @@ void main_thread() {
     palette_combobox->addItem("Pastel");
     palette_combobox->addItem("Interpolated");
     palette_combobox->addItem("CyclicHSV");
-<<<<<<< HEAD
     palette_combobox->addItem("FractalPattern");
     palette_combobox->addItem("PerlinNoise");
     palette_combobox->addItem("Water");
@@ -111,8 +132,6 @@ void main_thread() {
     palette_combobox->addItem("IceCave");
     palette_combobox->addItem("ElectricNebula");
     palette_combobox->addItem("AccretionDisk");
-=======
->>>>>>> main
 
     palette_combobox->setSelectedItem("HSV");
     palette_combobox->onItemSelect([&](tgui::String str) {
@@ -129,6 +148,10 @@ void main_thread() {
     while (window.isOpen()) {
         // --- Event Handling ---
         while (const auto event = window.pollEvent()) {
+            if (const auto gg = event->getIf<sf::Event::MouseWheelScrolled>() || event->is<sf::Event::MouseMoved>() || event->is<sf::Event::KeyPressed>() || event->is<sf::Event::MouseButtonPressed>()) {
+                quality_improvement_timer.restart();
+            }
+
             if (const auto* mouse_move_event = event->getIf<sf::Event::MouseMoved>()) {
                 current_mouse_pos = mouse_move_event->position;
 
@@ -140,7 +163,6 @@ void main_thread() {
                 }
                 if (current_mouse_pos.x > 1920 - 800 && current_mouse_pos.y < 600) {
                     julia_set.drawIterationLines(current_mouse_pos);
-                    should_render_julia = true;
                 }
             }
 
@@ -198,13 +220,15 @@ void main_thread() {
             if (const auto* mouse_wheel_event = event->getIf<sf::Event::MouseWheelScrolled>()) {
                 if (current_mouse_pos.x < 800 && current_mouse_pos.y < 600) {
                     should_render_mandelbrot = true;
+                    is_zooming = true;
                     mandelbrot_quality = render_state::good;
                     mandelbrot_set.handleZoom(mouse_wheel_event->delta, current_mouse_pos);
                 }
                 else if (current_mouse_pos.x > window.getSize().x - 800 && current_mouse_pos.y < 600) {
-                    julia_set.handleZoom(mouse_wheel_event->delta, current_mouse_pos);
                     should_render_julia = true;
+                    is_zooming_julia = true;
                     julia_quality = render_state::good;
+                    julia_set.handleZoom(mouse_wheel_event->delta, current_mouse_pos);
                 }
             }
 
@@ -212,14 +236,12 @@ void main_thread() {
                 if (mouse_button_pressed_event->button == sf::Mouse::Button::Left) {
                     if (current_mouse_pos.x < 800 && current_mouse_pos.y < 600) {
                         is_mouse_pressed = true;
-                        should_render_mandelbrot = true;
                         mandelbrot_quality = render_state::good;
                         mandelbrot_set.start_dragging(current_mouse_pos);
                     }
                     else if (current_mouse_pos.x > window.getSize().x - 800 && current_mouse_pos.y < 600) {
+                        is_mouse_pressed_julia = true;
                         julia_set.start_dragging(current_mouse_pos);
-                        should_render_julia = true;
-                        julia_quality = render_state::good;
                     }
                 }
                 if (mouse_button_pressed_event->button == sf::Mouse::Button::Right) {
@@ -234,9 +256,11 @@ void main_thread() {
                 if (mouse_button_released_event->button == sf::Mouse::Button::Left) {
                     if (current_mouse_pos.x < 800 && current_mouse_pos.y < 600) {
                         is_mouse_pressed = false;
+                        mandelbrot_quality = render_state::best;
                         mandelbrot_set.stop_dragging();
                     }
                     else if (current_mouse_pos.x > window.getSize().x - 800 && current_mouse_pos.y < 600) {
+                        is_mouse_pressed_julia = false;
                         julia_set.stop_dragging();
                     }
                 }
@@ -257,6 +281,7 @@ void main_thread() {
                     }
                 }
                 else if (current_mouse_pos.x > window.getSize().x - 800 && current_mouse_pos.y < 600 && julia_set.get_is_dragging()) {
+                    has_mouse_moved_julia_area = true;
                     if (julia_set.get_is_dragging()) {
                         julia_set.dragging({ current_mouse_pos.x, current_mouse_pos.y });
                         should_render_julia = true;
@@ -266,12 +291,39 @@ void main_thread() {
             }
             gui.handleEvent(*event);
         } // --- End Event Handling ---
-
+        sf::Time delta_time = clock.restart();
         ++current_fps;
 
-        // --- Mandelbrot Rendering ---
-        if (should_render_mandelbrot || mandelbrot_quality != render_state::best || previous_mandelbrot_quality != render_state::best && !is_mouse_pressed)
+        is_dragging_fractal = has_mouse_moved_mandelbrot_area && is_mouse_pressed;
+        is_zooming = is_zooming && (time_since_interaction_end += delta_time.asMilliseconds()) > 500;
+        is_interacting = is_dragging_fractal || is_zooming;
+
+        if (is_interacting) {
+            time_since_interaction_end = 0;
+            should_improve_quality = false;
+        }
+        else {
+            time_since_interaction_end += delta_time.asMilliseconds();
+        }
+
+        bool can_improve_quality = time_since_interaction_end > 500;
+
+        if (is_interacting) {
+            mandelbrot_quality = render_state::good;
+        }
+        else if (can_improve_quality) {
+            mandelbrot_quality = render_state::best;
+        }
+
+        bool should_render =
+            should_render_mandelbrot ||
+            is_interacting ||
+            (can_improve_quality && !is_interacting && mandelbrot_quality != render_state::best);
+
+
+        if (should_render)
         {
+            should_render_mandelbrot = false;
             previous_mandelbrot_quality = mandelbrot_quality;
             std::string quality_str = mandelbrot_quality == render_state::best ? "Best" : (mandelbrot_quality == render_state::good ? "Good" : "Bad");
             mandelbrot_set.render(mandelbrot_quality);
@@ -298,18 +350,38 @@ void main_thread() {
             std::cout << "Time needed to apply SSAA4 and draw to window: " << draw_duration.count() << " ms\n";
             std::cout << "Mandelbrot set " << "(" << quality_str << ")" << " was drawn in : " << render_time.asMilliseconds() << " ms" << std::endl;
             std::cout << "Zoom scale: " << mandelbrot_set.get_zoom_x() << "\n";
-
-            if (quality_improvement_timer.getElapsedTime().asMilliseconds() > 500 && !is_mouse_pressed) {
-                if (quality_str == "Bad") {
-                    mandelbrot_quality = render_state::good;
-                }
-                else if (quality_str == "Good") {
-                    mandelbrot_quality = render_state::best;
-                }
-                quality_improvement_timer.restart();
-            }
             should_render_mandelbrot = false;
+            if (should_improve_quality)
+                previous_mandelbrot_quality = static_cast<render_state>(static_cast<int>(previous_mandelbrot_quality) + 1);
         } // --- End Mandelbrot Rendering ---
+
+        bool is_dragging_fractal_julia = has_mouse_moved_julia_area && is_mouse_pressed_julia;
+        is_zooming_julia = is_zooming_julia && (time_since_interaction_end_julia += delta_time.asMilliseconds()) > 500;
+        is_interacting_julia = is_dragging_fractal_julia || is_zooming_julia;
+        bool is_interacting_julia_this_frame = is_interacting_julia || should_render_julia;
+
+        if (is_interacting_julia_this_frame) {
+            time_since_interaction_end_julia = 0;
+        }
+        else {
+            time_since_interaction_end_julia += delta_time.asMilliseconds();
+        }
+
+        bool can_improve_julia_quality = time_since_interaction_end_julia > 500;
+
+        render_state qual = julia_quality;
+
+        if (is_interacting_julia_this_frame) {
+            julia_quality = render_state::good;
+        }
+        else if (can_improve_julia_quality) {
+            julia_quality = render_state::best;
+        }
+
+        bool should_render_julia_this_frame = (
+            should_render_julia ||
+            is_interacting_julia_this_frame ||
+            (can_improve_julia_quality && !is_interacting_julia_this_frame && qual != render_state::best));
 
         if (timelapse_rendering) {
             julia_set.update_timelapse();
@@ -363,8 +435,9 @@ void main_thread() {
             should_render_julia = false;
         } // --- End Julia Rendering (Conditional on Mouse Move in Mandelbrot Area) ---
 
-        else if (julia_quality != render_state::best || previous_julia_quality != render_state::best || should_render_julia)
+        else if (should_render_julia_this_frame)
         {
+            should_render_julia = false;
             previous_julia_quality = julia_quality;
             std::string quality_str_julia = julia_quality == render_state::best ? "Best" : "Good";
 
@@ -388,12 +461,8 @@ void main_thread() {
 
 
             std::cout << "julia set " << "(" << quality_str_julia << ")\n";
-
-            if (quality_str_julia == "Good") {
-                julia_quality = render_state::best;
-            }
-
-            should_render_julia = false;
+            if (can_improve_julia_quality)
+                previous_julia_quality = static_cast<render_state>(static_cast<int>(previous_julia_quality) + 1);
         }
 
 
@@ -418,6 +487,8 @@ void main_thread() {
             current_fps = 0;
             fps_timer.restart();
         } // --- End FPS Counter Update ---
+
+        should_render_mandelbrot = should_render_mandelbrot || mandelbrot_quality != render_state::best;
 
     } // --- End Main Render Loop ---
 }
