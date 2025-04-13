@@ -37,7 +37,6 @@ enum class Palletes {
 extern bool running_other_core;
 
 enum class render_state {
-	bad,
 	good,
     best
 };
@@ -66,6 +65,10 @@ protected:
     unsigned int degrees_offsetForHSV = 0;
     unsigned int drawen_iterations = 0;
     float maxComputation;
+
+    // Double precision stop flag
+    int* d_doubleCancelFlag;
+    int* h_doubleCancelFlag;
 
     // Dragging properties
     sf::Vector2i drag_start_pos;
@@ -162,10 +165,7 @@ public:
      * @brief CUDA kernel function to calculate and render the fractal given template.
      * This kernel is executed in parallel by multiple threads on the GPU.
      * Each thread calculates the color of a single pixel based on its position
-     * and the fractal rendering algorithm.
-     *
-     * @param width Image width.
-     * @param height Image height.
+     * and the fractal rendering algorithm
      */
     void render(render_state quality);
 

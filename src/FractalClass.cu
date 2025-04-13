@@ -48,9 +48,10 @@ FractalBase<Derived>::FractalBase()
         paletteSize = 20000;
     }
 
-    cudaMalloc(&stopFlagDevice, sizeof(bool));
-    bool flag = true;
-    cudaMemcpy(stopFlagDevice, &flag, sizeof(bool), cudaMemcpyHostToDevice);
+    cudaHostAlloc(&h_doubleCancelFlag, sizeof(int), 0);
+    *h_doubleCancelFlag = 0;
+    cudaMalloc(&d_doubleCancelFlag, sizeof(int));
+    cudaMemcpy(d_doubleCancelFlag, h_doubleCancelFlag, sizeof(int), cudaMemcpyHostToDevice);
 
     cudaMalloc(&d_palette, palette.size() * sizeof(sf::Color));
     cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
@@ -263,7 +264,10 @@ void FractalBase<Derived>::post_processing() {
         cudaMemcpyAsync(h_total_iterations, d_total_iterations, sizeof(int), cudaMemcpyDeviceToHost, dataStream);
         cudaError_t status = cudaEventQuery(stop_rendering);
         hardness_coeff = *h_total_iterations / (width * height * 1.0);
-        if (status != cudaSuccess && (hardness_coeff > maxComputation) || std::is_same<Derived, fractals::julia>::value || zoom_x > 1e7) {
+        // ToDo implement a more complex solution for checking if the kernel is finished and not just blindly synchronizing
+        // the problem with current implementation is that it will wait for the kernel to finish even if you dont need to
+        // that situation may occur if you have good enough gpu, and you don't have that bad of frame delay  ( < 5)
+        if (status != cudaSuccess && (hardness_coeff > 0) || std::is_same<Derived, fractals::julia>::value || zoom_x > 1e7) {
             cudaStreamSynchronize(stream);
         }
         image = sf::Image({ 800, 600 }, pixels);
@@ -284,6 +288,8 @@ void FractalBase<Derived>::post_processing() {
 //    running_other_core = false;
 //    cudaMemcpy(stopFlagDevice, &flag, sizeof(bool), cudaMemcpyHostToDevice);
 //}
+
+
 template <>
 void FractalBase<fractals::mandelbrot>::render(render_state quality) {
     cudaEvent_t event;
@@ -354,7 +360,8 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
     while (err != cudaSuccess) {
         dimBlock.x -= 2;
         dimBlock.y -= 2;
-        dimGrid = (width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y;
+        dimGrid.x = (width + dimBlock.x - 1) / dimBlock.x;
+        dimGrid.y = (height + dimBlock.y - 1) / dimBlock.y;
         fractal_rendering<<<dimGrid, dimBlock, 0, stream>>>(
             d_pixels, len, width, height, render_zoom_x, render_zoom_y,
             x_offset, y_offset, d_palette, paletteSize,

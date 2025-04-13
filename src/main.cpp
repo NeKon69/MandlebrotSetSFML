@@ -58,6 +58,7 @@ void main_thread() {
     bool is_mouse_in_area = false;
     bool is_mouse_pressed_in_area = is_mouse_pressed && is_mouse_in_area;
     bool is_interacting = is_zooming || is_mouse_pressed_in_area;
+    int screenshotCounter = 0;
 
     bool is_zooming_julia = false;
     bool is_mouse_in_arear_julia = false;
@@ -214,6 +215,19 @@ void main_thread() {
                     else julia_set.start_timelapse();
                     timelapse_rendering = !timelapse_rendering;
                 }
+                else if (key_press_event->scancode == sf::Keyboard::Scancode::F6) {
+                    sf::Texture texture({800, 600});
+                    texture.update(window);
+                    sf::Image screenshot = texture.copyToImage();
+                    std::string filename = "mandelbrot_" + std::to_string(screenshotCounter++) + ".png";
+
+                    // 3. Save the image to a file
+                    if (screenshot.saveToFile(filename)) {
+                        std::cout << "Screenshot saved to " << filename << std::endl;
+                    } else {
+                        std::cerr << "Error: Failed to save screenshot to " << filename << std::endl;
+                    }
+                }
             }
 
             if (const auto* mouse_wheel_event = event->getIf<sf::Event::MouseWheelScrolled>()) {
@@ -289,34 +303,46 @@ void main_thread() {
         sf::Time delta_time = clock.restart();
         ++current_fps;
 
-        is_dragging_fractal = has_mouse_moved_mandelbrot_area && is_mouse_pressed;
-        is_zooming = is_zooming && (time_since_interaction_end += delta_time.asMilliseconds()) > 500;
-        is_interacting = is_dragging_fractal || is_zooming;
+        bool is_dragging_this_frame = is_mouse_pressed && has_mouse_moved_mandelbrot_area;
+        bool is_zooming_this_frame = is_zooming; // Use the per-frame event flag
+        bool is_interacting_this_frame = is_dragging_this_frame || is_zooming_this_frame;
 
-        if (is_interacting) {
-            time_since_interaction_end = 0;
-            should_improve_quality = false;
-        }
-        else {
+        // 2. Update idle timer
+        if (is_interacting_this_frame) {
+            time_since_interaction_end = 0.0f;
+        } else {
+            // Only increment if not interacting
             time_since_interaction_end += delta_time.asMilliseconds();
         }
 
-        bool can_improve_quality = time_since_interaction_end > 500;
+        bool should_render_this_frame = false;
 
-        if (is_interacting) {
+        // Trigger 1: External request
+        if (should_render_mandelbrot) {
+            should_render_this_frame = true;
             mandelbrot_quality = render_state::good;
         }
-        else if (can_improve_quality) {
-            mandelbrot_quality = render_state::best;
+
+        // Trigger 2: Active interaction (Dragging or Zooming *now*)
+        // This overrides the external trigger's quality if both are true
+        if (is_interacting_this_frame) {
+            should_render_this_frame = true;
+            mandelbrot_quality = render_state::good;
+        }
+        // Trigger 3: Idle Improvement (Only if not interacting)
+        else {
+            const float IDLE_TIME_THRESHOLD_MS = 500.0f;
+            bool needs_quality_improvement = time_since_interaction_end > IDLE_TIME_THRESHOLD_MS;
+
+            if (needs_quality_improvement && (mandelbrot_quality != render_state::best || previous_mandelbrot_quality != render_state::best)) {
+                should_render_this_frame = true;
+                mandelbrot_quality = render_state::best;
+            }
         }
 
-        bool should_render =
-            should_render_mandelbrot ||
-            is_interacting ||
-            (can_improve_quality && !is_interacting && mandelbrot_quality != render_state::best);
 
 
-        if (should_render)
+        if (should_render_this_frame)
         {
             should_render_mandelbrot = false;
             previous_mandelbrot_quality = mandelbrot_quality;
@@ -345,36 +371,45 @@ void main_thread() {
             std::cout << "Time needed to apply SSAA4 and draw to window: " << draw_duration.count() << " ms\n";
             std::cout << "Mandelbrot set " << "(" << quality_str << ")" << " was drawn in : " << render_time.asMilliseconds() << " ms" << std::endl;
             std::cout << "Zoom scale: " << mandelbrot_set.get_zoom_x() << "\n";
-            should_render_mandelbrot = false;
         } // --- End Mandelbrot Rendering ---
 
-        bool is_dragging_fractal_julia = has_mouse_moved_julia_area && is_mouse_pressed_julia;
-        is_zooming_julia = is_zooming_julia && (time_since_interaction_end_julia += delta_time.asMilliseconds()) > 500;
-        is_interacting_julia = is_dragging_fractal_julia || is_zooming_julia;
-        bool is_interacting_julia_this_frame = is_interacting_julia || should_render_julia;
+        bool is_dragging_julia_this_frame = is_mouse_pressed_julia && has_mouse_moved_julia_area;
+        bool is_zooming_julia_this_frame = is_zooming_julia;
+        bool is_interacting_julia_this_frame = is_dragging_julia_this_frame || is_zooming_julia_this_frame;
 
+        // 2. Update idle timer
         if (is_interacting_julia_this_frame) {
-            time_since_interaction_end_julia = 0;
+            time_since_julia_interaction_end = sf::Time::Zero;
+        } else {
+            // Only increment if not interacting
+            time_since_julia_interaction_end += delta_time;
         }
-        else {
-            time_since_interaction_end_julia += delta_time.asMilliseconds();
-        }
 
-        bool can_improve_julia_quality = time_since_interaction_end_julia > 500;
+        bool should_render_julia_this_frame = false;
 
-        render_state qual = julia_quality;
-
-        if (is_interacting_julia_this_frame) {
+        // Trigger 1: External request
+        if (should_render_julia) {
+            should_render_julia_this_frame = true;
             julia_quality = render_state::good;
         }
-        else if (can_improve_julia_quality) {
-            julia_quality = render_state::best;
-        }
 
-        bool should_render_julia_this_frame = (
-            should_render_julia ||
-            is_interacting_julia_this_frame ||
-            (can_improve_julia_quality && !is_interacting_julia_this_frame && qual != render_state::best));
+        // Trigger 2: Active interaction (Dragging or Zooming *now*)
+        // This overrides the external trigger's quality if both are true
+        if (is_interacting_julia_this_frame) {
+            should_render_julia_this_frame = true;
+            julia_quality = render_state::good;
+        }
+        // Trigger 3: Idle Improvement (Only if not interacting)
+        else {
+            const float IDLE_TIME_THRESHOLD_MS = 500.0f;
+            bool needs_quality_improvement = time_since_julia_interaction_end.asMilliseconds() > IDLE_TIME_THRESHOLD_MS;
+
+            if (needs_quality_improvement && (julia_quality != render_state::best || previous_julia_quality != render_state::best))
+            {
+                should_render_julia_this_frame = true;
+                julia_quality = render_state::best;
+            }
+        }
 
         if (timelapse_rendering) {
             julia_set.update_timelapse();
@@ -454,8 +489,6 @@ void main_thread() {
 
 
             std::cout << "julia set " << "(" << quality_str_julia << ")\n";
-            if (can_improve_julia_quality)
-                previous_julia_quality = static_cast<render_state>(static_cast<int>(previous_julia_quality) + 1);
         }
 
 
@@ -481,7 +514,10 @@ void main_thread() {
             fps_timer.restart();
         } // --- End FPS Counter Update ---
 
-        should_render_mandelbrot = should_render_mandelbrot || mandelbrot_quality != render_state::best;
+        has_mouse_moved_mandelbrot_area = false;
+        is_zooming = false;
+        has_mouse_moved_julia_area = false;
+        is_zooming_julia = false;
 
     } // --- End Main Render Loop ---
 }
