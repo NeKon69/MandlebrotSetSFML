@@ -27,7 +27,7 @@ __global__ void fractal_rendering(
 
     const unsigned int x =   blockIdx.x * blockDim.x + threadIdx.x;
     const unsigned int y =   blockIdx.y * blockDim.y + threadIdx.y;
-    const unsigned int id =  threadIdx.y * blockDim.y + threadIdx.x;
+    const unsigned int id = threadIdx.y * blockDim.y + threadIdx.x;
 
     if (x == 0 && y == 0) {
         *d_total_iterations = 0;
@@ -56,13 +56,13 @@ __global__ void fractal_rendering(
         }
 
         total_iterations[id] = static_cast<unsigned int>(current_iteration);
-        //__syncthreads();
+        __syncthreads();
 
         for (unsigned int s = blockDim.x * blockDim.y / 2; s > 0; s >>= 1) {
             if (id < s) {
                 total_iterations[id] += total_iterations[id + s];
             }
-            //__syncthreads();
+            __syncthreads();
         }
         if (id == 0) {
             //d_total_iterations += total_iterations[0];
@@ -110,12 +110,13 @@ __global__ void fractal_rendering(
     const float zoom_x, const float zoom_y, const float x_offset, const float y_offset,
     sf::Color* d_palette, const int paletteSize, const float maxIterations, unsigned int* d_total_iterations) {
 
+    __shared__ unsigned int total_iterations[1024];
 
     const unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
     const unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
-    const unsigned int id = threadIdx.y * blockDim.x + threadIdx.x;
+    const unsigned int id = threadIdx.y * blockDim.y + threadIdx.x;
 
-    if (id == 0) {
+    if (x == 0 && y == 0) {
         *d_total_iterations = 0;
     }
     __syncthreads();
@@ -124,7 +125,7 @@ __global__ void fractal_rendering(
     const float scale_factor = static_cast<float>(size_of_pixels) / static_cast<float>(expected_size);
 
     if (x < width && y < height) {
-        __shared__ unsigned int total_iterations[1024];
+
         const float real = static_cast<float>(x) / zoom_x - x_offset;
         const float imag = static_cast<float>(y) / zoom_y - y_offset;
         float z_real = 0.0f, z_imag = 0.0f;
@@ -140,13 +141,13 @@ __global__ void fractal_rendering(
         }
 
         total_iterations[id] = static_cast<unsigned int>(current_iteration);
-        // __syncthreads();
+        __syncthreads();
 
         for (unsigned int s = blockDim.x * blockDim.y / 2; s > 0; s >>= 1) {
             if (id < s) {
                 total_iterations[id] += total_iterations[id + s];
             }
-            // __syncthreads();
+            __syncthreads();
         }
 
         if (id == 0) {

@@ -1,499 +1,548 @@
-#include <TGUI/Backend/SFML-Graphics.hpp>
-#include <TGUI/Core.hpp>
-#include <TGUI/AllWidgets.hpp>
-#include "CUDA files/FractalClass.cuh"
+#include <TGUI/TGUI.hpp>
+#include "FractalClass.cuh" // Assuming FractalBase, fractals::*, render_state, Palletes defined here
+#include <SFML/Graphics.hpp>
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include <string>
+#include <ctime> // For time formatting
+
+// Alias for clarity
+using RenderQuality = render_state;
 
 void main_thread() {
-	// --- Interaction State Variables ---
-    enum InteractionType { NONE, ZOOM, OTHER };
-    static InteractionType last_interaction = NONE;
-    static float time_since_interaction_end = 0.0f;
-    static float time_since_interaction_end_julia = 0.0f;
-    const float ZOOM_DELAY = 1000;
-    sf::Clock clock;
+    // --- Interaction State Variables ---
+    float mandelbrotIdleTimeMs = 0.0f;
+    sf::Time juliaIdleTime = sf::Time::Zero;
+    sf::Clock frameClock;
 
     // --- Render State Variables ---
-    render_state mandelbrot_quality = render_state::good;
-    render_state previous_mandelbrot_quality = render_state::good;
-    render_state julia_quality = render_state::good;
-    render_state previous_julia_quality = render_state::good;
+    RenderQuality currentMandelbrotQuality = RenderQuality::good;
+    RenderQuality previousMandelbrotQuality = RenderQuality::good; // Tracks the quality used in the *last* render
+    RenderQuality currentJuliaQuality = RenderQuality::good;
+    RenderQuality previousJuliaQuality = RenderQuality::good;    // Tracks the quality used in the *last* render
 
-    // --- Render Flags ---
-    bool should_render_mandelbrot = true;
-    bool should_render_julia = true;
-    bool should_render_iteration_lines = false;
+    // --- Render Request Flags ---
+    bool needsMandelbrotRender = true;
+    bool needsJuliaRender = true;
+    bool showMandelbrotIterationLines = false;
 
-    // --- SFML Window and Buffer ---
-    sf::RenderWindow window(sf::VideoMode({ 1920, 1080 }), "Fractals");
-    sf::RenderTexture render_buffer({ 1920, 1080 });
+    // --- SFML Window and Render Target Setup ---
+    const sf::Vector2u windowSize = { 1920, 1080 };
+    sf::RenderWindow window(sf::VideoMode(windowSize), "Fractals");
+    sf::RenderTexture renderTarget;
+     renderTarget = sf::RenderTexture({windowSize.x, windowSize.y});
 
-    // --- Font and Text Elements ---
-    sf::Font font;
-    if (!font.openFromFile("C:\\Windows\\Fonts\\ariblk.ttf")) {
-        return; // Handle font loading error appropriately, maybe throw an exception or log error
+
+    // --- Font and Text Elements for UI Overlays ---
+    sf::Font mainFont;
+    if (!mainFont.openFromFile("fonts/LiberationMono-Bold.ttf")) {
+         std::cerr << "Error loading font!" << std::endl;
+        return;
     }
-    sf::Text fps_text(font);
-    fps_text.setPosition({ 10, 10 });
-    fps_text.setString("0");
-    sf::Text mandelbrot_hardness_text(font);
-    mandelbrot_hardness_text.setPosition({ 10, 40 });
-    mandelbrot_hardness_text.setString("0.0");
-    sf::Text julia_hardness_text(font);
-    julia_hardness_text.setPosition({ 1920 - 800 + 10, 40 }); // Position relative to Julia set window
-    julia_hardness_text.setString("0.0");
+    sf::Text fpsDisplay(mainFont);
+    fpsDisplay.setPosition({ 10, 10 });
+    fpsDisplay.setString("FPS: 0");
+    sf::Text mandelbrotHardnessDisplay(mainFont);
+    mandelbrotHardnessDisplay.setPosition({ 10, 40 });
+    mandelbrotHardnessDisplay.setString("M-Hardness: 0.0");
+    sf::Text juliaHardnessDisplay(mainFont);
+    juliaHardnessDisplay.setPosition({ static_cast<float>(windowSize.x - 800 + 10), 40.f }); // Position relative to Julia area
+    juliaHardnessDisplay.setString("J-Hardness: 0.0");
 
-    // --- Mouse Interaction Variables ---
-    sf::Vector2i initial_mouse_pos; // Base mouse position, might not be used
-    sf::Vector2i current_mouse_pos;
+    // --- Mouse State ---
+    sf::Vector2i mousePosition;
 
-    double julia_zx = 0, julia_zy = 0; // Complex coordinates for Julia set calculation
+    // --- Julia Set Parameters ---
+    double juliaSeedReal = 0.0;
+    double juliaSeedImag = 0.0;
 
-    bool is_drawing_julia = false;
-    bool is_mouse_pressed = false;
-    bool is_first_mouse_move = true;
-    bool is_dragging_fractal = false;
-    bool timelapse_rendering = false;
-    bool is_zooming = false;
-    bool is_mouse_in_area = false;
-    bool is_mouse_pressed_in_area = is_mouse_pressed && is_mouse_in_area;
-    bool is_interacting = is_zooming || is_mouse_pressed_in_area;
+    // --- Core Application State Flags ---
+    bool isJuliaVisible = false;
+    bool isLeftMouseDownMandelbrot = false; // Tracks if left mouse is held in Mandelbrot area
+    bool isLeftMouseDownJulia = false;      // Tracks if left mouse is held in Julia area
+    bool isTimelapseActive = false;
+    bool blockJuliaParameterUpdate = false;
 
-    bool is_zooming_julia = false;
-    bool is_mouse_in_arear_julia = false;
-    bool is_mouse_pressed_in_area_julia = false;
-    bool is_interacting_julia = is_zooming_julia || is_mouse_pressed_in_area;
-    bool should_improve_quality = false;
-    bool should_improve_quality_julia = false;
-    bool is_mouse_pressed_julia = false;
-    bool has_mouse_moved_julia_area = false;
-    sf::Time time_since_julia_interaction_end;
+    // --- Per-Frame Event Flags (Reset each loop iteration) ---
+    bool isZoomingMandelbrot = false;
+    bool mouseMovedInMandelbrotArea = true; // Start true for initial render
+    bool isZoomingJulia = false;
+    bool mouseMovedInJuliaArea = false;
 
-    // --- Timers and Clock ---
-    sf::Clock mandelbrot_render_timer;
-    sf::Clock julia_render_timer;
-    sf::Clock fps_timer;
-    sf::Clock quality_improvement_timer;
+    // --- Timers ---
+    sf::Clock mandelbrotRenderClock;
+    sf::Clock juliaRenderClock;
+    sf::Clock fpsUpdateClock;
+    sf::Clock qualityImprovementClock; // Tracks time since last interaction for quality upgrades
 
-    float current_fps = 0.0f;
+    unsigned int frameCountForFPS = 0;
 
-    // --- Fractal Objects ---
-    FractalBase<fractals::mandelbrot> mandelbrot_set;
-    FractalBase<fractals::julia> julia_set;
-    julia_set.setPosition({ static_cast<float>(window.getSize().x - 800), 0.f }); // Position Julia set to the right
-    double max_iterations = mandelbrot_set.get_max_iters();
+    // --- Fractal Objects Instantiation ---
+    using MandelbrotFractal = FractalBase<fractals::mandelbrot>;
+    using JuliaFractal = FractalBase<fractals::julia>;
 
-    bool block_julia_updates = false;
-
-    bool has_mouse_moved_mandelbrot_area = true;
+    MandelbrotFractal mandelbrotFractal;
+    JuliaFractal juliaFractal;
+    juliaFractal.setPosition({ static_cast<float>(windowSize.x - 800), 0.f }); // Position Julia set sprite
 
     window.setFramerateLimit(360);
 
     // --- Performance Measurement ---
-    float gflops = measureGFLOPS(50000);
-    std::cout << "Gflops: " << gflops << "\n";
-    mandelbrot_set.setMaxComputation(gflops);
-    julia_set.setMaxComputation(gflops);
+    std::cout << "Measuring GFLOPS..." << std::endl;
+    float measuredGflops = measureGFLOPS(50000); // Assuming measureGFLOPS is defined elsewhere
+    std::cout << "Estimated GFLOPS: " << measuredGflops << std::endl;
+    mandelbrotFractal.setMaxComputation(measuredGflops);
+    juliaFractal.setMaxComputation(measuredGflops);
 
     // --- TGUI Setup ---
     tgui::Gui gui(window);
 
-    tgui::Slider::Ptr palette_slider = tgui::Slider::create();
-    palette_slider->setMinimum(0);
-    palette_slider->setMaximum(360);
-    palette_slider->onValueChange([&](float pos) {
-        if (mandelbrot_set.getPallete() == Palletes::HSV)
-            mandelbrot_set.SetDegreesOffsetForHSV(static_cast<int>(pos));
-        if (julia_set.getPallete() == Palletes::HSV)
-            julia_set.SetDegreesOffsetForHSV(static_cast<int>(pos));
-        should_render_mandelbrot = true;
-        should_render_julia = true;
+    tgui::Slider::Ptr paletteOffsetSlider = tgui::Slider::create();
+    paletteOffsetSlider->setMinimum(0);
+    paletteOffsetSlider->setMaximum(360);
+    paletteOffsetSlider->onValueChange([&](float pos) {
+        // Apply offset only if an HSV-based palette is selected
+        if (mandelbrotFractal.getPallete() == Palletes::HSV || mandelbrotFractal.getPallete() == Palletes::CyclicHSV)
+            mandelbrotFractal.SetDegreesOffsetForHSV(static_cast<int>(pos));
+        if (juliaFractal.getPallete() == Palletes::HSV || juliaFractal.getPallete() == Palletes::CyclicHSV)
+            juliaFractal.SetDegreesOffsetForHSV(static_cast<int>(pos));
+        needsMandelbrotRender = true;
+        needsJuliaRender = true;
         });
-    palette_slider->setPosition({ 810, 40 });
+    paletteOffsetSlider->setPosition({ 810, 40 });
+    paletteOffsetSlider->setSize({200, 18});
 
-    tgui::ComboBox::Ptr palette_combobox = tgui::ComboBox::create();
-    palette_combobox->setPosition({ 810, 10 });
-    palette_combobox->addItem("HSV");
-    palette_combobox->addItem("BlackOWhite");
-    palette_combobox->addItem("Basic");
-    palette_combobox->addItem("OscillatingGrayscale");
-    palette_combobox->addItem("Fire");
-    palette_combobox->addItem("Pastel");
-    palette_combobox->addItem("Interpolated");
-    palette_combobox->addItem("CyclicHSV");
-    palette_combobox->addItem("FractalPattern");
-    palette_combobox->addItem("PerlinNoise");
-    palette_combobox->addItem("Water");
-    palette_combobox->addItem("Sunset");
-    palette_combobox->addItem("DeepSpace");
-    palette_combobox->addItem("Physchodelic");
-    palette_combobox->addItem("IceCave");
-    palette_combobox->addItem("ElectricNebula");
-    palette_combobox->addItem("AccretionDisk");
-
-    palette_combobox->setSelectedItem("HSV");
-    palette_combobox->onItemSelect([&](tgui::String str) {
-        should_render_mandelbrot = true;
-        mandelbrot_set.setPallete(std::string(str));
-        should_render_julia = true;
-        julia_set.setPallete(std::string(str));
+    tgui::ComboBox::Ptr paletteSelector = tgui::ComboBox::create();
+    paletteSelector->setPosition({ 810, 10 });
+    paletteSelector->setSize({200, 24});
+    const std::vector<std::string> paletteNames = {
+        "HSV", "BlackOWhite", "Basic", "OscillatingGrayscale", "Fire", "Pastel",
+        "Interpolated", "CyclicHSV", "FractalPattern", "PerlinNoise", "Water",
+        "Sunset", "DeepSpace", "Physchodelic", "IceCave", "ElectricNebula",
+        "AccretionDisk"};
+    for(const auto& name : paletteNames) {
+        paletteSelector->addItem(name);
+    }
+    paletteSelector->setSelectedItem("HSV");
+    paletteSelector->onItemSelect([&](const tgui::String& str) {
+        needsMandelbrotRender = true;
+        mandelbrotFractal.setPallete(str.toStdString());
+        needsJuliaRender = true;
+        juliaFractal.setPallete(str.toStdString());
         });
 
-    gui.add(palette_combobox);
-    gui.add(palette_slider);
+    gui.add(paletteSelector);
+    gui.add(paletteOffsetSlider);
 
+    // ========================================================================
     // --- Main Render Loop ---
+    // ========================================================================
     while (window.isOpen()) {
+
+        // --------------------------------------------------------------------
         // --- Event Handling ---
+        // --------------------------------------------------------------------
         while (const auto event = window.pollEvent()) {
-            if (const auto gg = event->getIf<sf::Event::MouseWheelScrolled>() || event->is<sf::Event::MouseMoved>() || event->is<sf::Event::KeyPressed>() || event->is<sf::Event::MouseButtonPressed>()) {
-                quality_improvement_timer.restart();
+             gui.handleEvent(*event);
+
+             // Reset quality improvement timer on any interaction
+             if (event->is<sf::Event::MouseWheelScrolled>() ||
+                event->is<sf::Event::MouseMoved>() ||
+                event->is<sf::Event::KeyPressed>() ||
+                event->is<sf::Event::MouseButtonPressed>())
+            {
+                 qualityImprovementClock.restart();
             }
 
-            if (const auto* mouse_move_event = event->getIf<sf::Event::MouseMoved>()) {
-                current_mouse_pos = mouse_move_event->position;
+            // --- Mouse Movement ---
+            if (const auto* mouseMoveEvent = event->getIf<sf::Event::MouseMoved>()) {
+                mousePosition = mouseMoveEvent->position;
 
-                if (current_mouse_pos.x < 800 && current_mouse_pos.y < 600) {
-                    if (should_render_iteration_lines) {
-                        mandelbrot_set.drawIterationLines(current_mouse_pos);
+                // Define approximate areas for interaction
+                bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < 800 && mousePosition.y >= 0 && mousePosition.y < windowSize.y; // Adjust 800 based on actual Mandelbrot size/layout
+                bool isInJuliaArea = mousePosition.x >= windowSize.x - 800 && mousePosition.x < windowSize.x && mousePosition.y >= 0 && mousePosition.y < windowSize.y; // Adjust 800 based on actual Julia size/layout
+
+
+                if (isInMandelbrotArea) {
+                    mouseMovedInMandelbrotArea = true;
+                    if (showMandelbrotIterationLines) {
+                        mandelbrotFractal.drawIterationLines(mousePosition);
+                        needsMandelbrotRender = true;
                     }
-                    has_mouse_moved_mandelbrot_area = true;
+                    if (mandelbrotFractal.get_is_dragging()) { // Check internal state
+                        currentMandelbrotQuality = RenderQuality::good;
+                        mandelbrotFractal.dragging(mousePosition);
+                        needsMandelbrotRender = true;
+                    }
                 }
-                if (current_mouse_pos.x > 1920 - 800 && current_mouse_pos.y < 600) {
-                    julia_set.drawIterationLines(current_mouse_pos);
+                else if (isInJuliaArea) {
+                    mouseMovedInJuliaArea = true;
+                     if (juliaFractal.get_is_dragging()) { // Check internal state
+                        currentJuliaQuality = RenderQuality::good;
+                        juliaFractal.dragging(mousePosition);
+                        needsJuliaRender = true;
+                     }
                 }
             }
 
+            // --- Window Close ---
             if (event->is<sf::Event::Closed>()) {
                 window.close();
+                break;
             }
 
-            if (const auto* key_press_event = event->getIf<sf::Event::KeyPressed>()) {
-                if (key_press_event->scancode == sf::Keyboard::Scancode::Escape) {
-                    window.close();
-                }
-                else if (key_press_event->scancode == sf::Keyboard::Scancode::R) {
-                    if (current_mouse_pos.x < 800 && current_mouse_pos.y < 600)
-                        mandelbrot_set.set_max_iters(mandelbrot_set.get_max_iters() * 2);
-                }
-                else if (key_press_event->scancode == sf::Keyboard::Scancode::B) {
-                    if (current_mouse_pos.x < 800 && current_mouse_pos.y < 600)
-                        block_julia_updates = !block_julia_updates;
-                }
-                else if (key_press_event->scancode == sf::Keyboard::Scancode::W) {
-                    if (current_mouse_pos.x < 800 && current_mouse_pos.y < 600) {
-                        should_render_mandelbrot = true;
-                        mandelbrot_quality = render_state::good;
-                        mandelbrot_set.move_fractal({ 0, 1 });
-                    }
-                }
-                else if (key_press_event->scancode == sf::Keyboard::Scancode::S) {
-                    if (current_mouse_pos.x < 800 && current_mouse_pos.y < 600) {
-                        should_render_mandelbrot = true;
-                        mandelbrot_quality = render_state::good;
-                        mandelbrot_set.move_fractal({ 0, -1 });
-                    }
-                }
-                else if (key_press_event->scancode == sf::Keyboard::Scancode::A) {
-                    if (current_mouse_pos.x < 800 && current_mouse_pos.y < 600) {
-                        should_render_mandelbrot = true;
-                        mandelbrot_quality = render_state::good;
-                        mandelbrot_set.move_fractal({ 1, 0 });
-                    }
-                }
-                else if (key_press_event->scancode == sf::Keyboard::Scancode::D) {
-                    if (current_mouse_pos.x < 800 && current_mouse_pos.y < 600) {
-                        should_render_mandelbrot = true;
-                        mandelbrot_quality = render_state::good;
-                        mandelbrot_set.move_fractal({ -1, 0 });
-                    }
-                }
-                else if (key_press_event->scancode == sf::Keyboard::Scancode::T) {
-                    if(timelapse_rendering) julia_set.stop_timelapse();
-                    else julia_set.start_timelapse();
-                    timelapse_rendering = !timelapse_rendering;
-                }
-            }
+            // --- Keyboard Input ---
+            if (const auto* keyPressEvent = event->getIf<sf::Event::KeyPressed>()) {
+                 // Check location for context-sensitive keys (using fixed coordinates)
+                 bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < 800 && mousePosition.y >= 0 && mousePosition.y < windowSize.y;
 
-            if (const auto* mouse_wheel_event = event->getIf<sf::Event::MouseWheelScrolled>()) {
-                if (current_mouse_pos.x < 800 && current_mouse_pos.y < 600) {
-                    should_render_mandelbrot = true;
-                    is_zooming = true;
-                    mandelbrot_quality = render_state::good;
-                    mandelbrot_set.handleZoom(mouse_wheel_event->delta, current_mouse_pos);
-                }
-                else if (current_mouse_pos.x > window.getSize().x - 800 && current_mouse_pos.y < 600) {
-                    should_render_julia = true;
-                    is_zooming_julia = true;
-                    julia_quality = render_state::good;
-                    julia_set.handleZoom(mouse_wheel_event->delta, current_mouse_pos);
-                }
-            }
+                switch(keyPressEvent->scancode) {
+                    case sf::Keyboard::Scancode::Escape:
+                        window.close();
+                        break;
 
-            if (const auto* mouse_button_pressed_event = event->getIf<sf::Event::MouseButtonPressed>()) {
-                if (mouse_button_pressed_event->button == sf::Mouse::Button::Left) {
-                    if (current_mouse_pos.x < 800 && current_mouse_pos.y < 600) {
-                        is_mouse_pressed = true;
-                        mandelbrot_quality = render_state::good;
-                        mandelbrot_set.start_dragging(current_mouse_pos);
-                    }
-                    else if (current_mouse_pos.x > window.getSize().x - 800 && current_mouse_pos.y < 600) {
-                        is_mouse_pressed_julia = true;
-                        julia_set.start_dragging(current_mouse_pos);
-                    }
-                }
-                if (mouse_button_pressed_event->button == sf::Mouse::Button::Right) {
-                    if (current_mouse_pos.x < 800 && current_mouse_pos.y < 600) {
-                        should_render_iteration_lines = true;
-                        mandelbrot_set.drawIterationLines(current_mouse_pos);
-                    }
-                }
-            }
+                    case sf::Keyboard::Scancode::R: // Increase iterations
+                        if (isInMandelbrotArea) {
+                            mandelbrotFractal.set_max_iters(mandelbrotFractal.get_max_iters() * 2);
+                            needsMandelbrotRender = true;
+                            currentMandelbrotQuality = RenderQuality::best;
+                        }
+                        break;
 
-            if (const auto* mouse_button_released_event = event->getIf<sf::Event::MouseButtonReleased>()) {
-                if (mouse_button_released_event->button == sf::Mouse::Button::Left) {
-                    if (current_mouse_pos.x < 800 && current_mouse_pos.y < 600) {
-                        is_mouse_pressed = false;
-                        mandelbrot_quality = render_state::best;
-                        mandelbrot_set.stop_dragging();
-                    }
-                    else if (current_mouse_pos.x > window.getSize().x - 800 && current_mouse_pos.y < 600) {
-                        is_mouse_pressed_julia = false;
-                        julia_set.stop_dragging();
-                    }
-                }
-                else if (mouse_button_released_event->button == sf::Mouse::Button::Right) {
-                    if (current_mouse_pos.x < 800 && current_mouse_pos.y < 600) {
-                        should_render_iteration_lines = false;
-                    }
+                    case sf::Keyboard::Scancode::B: // Toggle Julia parameter lock
+                        if (isInMandelbrotArea) {
+                            blockJuliaParameterUpdate = !blockJuliaParameterUpdate;
+                             if (!blockJuliaParameterUpdate) needsJuliaRender = true; // Render if unblocked
+                        }
+                        break;
+
+                    // Fractal Movement Keys
+                    case sf::Keyboard::Scancode::W:
+                    case sf::Keyboard::Scancode::S:
+                    case sf::Keyboard::Scancode::A:
+                    case sf::Keyboard::Scancode::D:
+                        if (isInMandelbrotArea) {
+                            sf::Vector2f direction = {0.f, 0.f};
+                            if (keyPressEvent->scancode == sf::Keyboard::Scancode::W) direction.y = 1.f;
+                            if (keyPressEvent->scancode == sf::Keyboard::Scancode::S) direction.y = -1.f;
+                            if (keyPressEvent->scancode == sf::Keyboard::Scancode::A) direction.x = 1.f;
+                            if (keyPressEvent->scancode == sf::Keyboard::Scancode::D) direction.x = -1.f;
+
+                            mouseMovedInMandelbrotArea = true;
+                            currentMandelbrotQuality = RenderQuality::good;
+                            mandelbrotFractal.move_fractal({int(direction.x), int(direction.y)});
+                        }
+                        break;
+
+                    case sf::Keyboard::Scancode::T: // Toggle Timelapse
+                        isTimelapseActive = !isTimelapseActive;
+                        if(isTimelapseActive) {
+                             juliaFractal.start_timelapse();
+                             std::cout << "Timelapse started." << std::endl;
+                        } else {
+                             juliaFractal.stop_timelapse();
+                             std::cout << "Timelapse stopped." << std::endl;
+                             needsJuliaRender = true;
+                             currentJuliaQuality = RenderQuality::best;
+                        }
+                        break;
+
+                    case sf::Keyboard::Scancode::F6: // Screenshot Mandelbrot
+                        {
+                            sf::Texture texture;
+                            // Ensure texture size matches the fractal's rendered texture
+                            texture = sf::Texture({mandelbrotFractal.getTexture().getSize().x, mandelbrotFractal.getTexture().getSize().y});
+                            texture.update(mandelbrotFractal.getTexture());
+                            sf::Image screenshot = texture.copyToImage();
+
+                            auto now = std::chrono::system_clock::now();
+                            std::time_t timer = std::chrono::system_clock::to_time_t(now);
+                            std::tm time_info;
+                            char filenameBuffer[80];
+
+                            #ifdef _WIN32
+                            localtime_s(&time_info, &timer);
+                            #else
+                            localtime_r(&timer, &time_info); // POSIX
+                            #endif
+                            std::strftime(filenameBuffer, sizeof(filenameBuffer), "%Y-%m-%d_%H-%M-%S", &time_info);
+
+                            std::string filename = "mandelbrot_";
+                            filename += filenameBuffer;
+                            filename += ".png";
+
+                            if (screenshot.saveToFile(filename)) {
+                                std::cout << "Screenshot saved to " << filename << std::endl;
+                            } else {
+                                std::cerr << "Error: Failed to save screenshot to " << filename << std::endl;
+                            }
+                        }
+                        break;
+                    default:
+                        break;
                 }
             }
 
-            if (const auto* mouse_drag_event = event->getIf<sf::Event::MouseMoved>()) {
-                if (current_mouse_pos.x < 800 && current_mouse_pos.y < 600) {
-                    has_mouse_moved_mandelbrot_area = true;
-                    if (mandelbrot_set.get_is_dragging()) {
-                        should_render_mandelbrot = true;
-                        mandelbrot_quality = render_state::good;
-                        mandelbrot_set.dragging({ current_mouse_pos.x, current_mouse_pos.y });
-                    }
+            // --- Mouse Wheel Scroll (Zooming) ---
+            if (const auto* mouseWheelEvent = event->getIf<sf::Event::MouseWheelScrolled>()) {
+                float delta = mouseWheelEvent->delta;
+                // Define approximate areas for interaction
+                bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < 800 && mousePosition.y >= 0 && mousePosition.y < windowSize.y;
+                bool isInJuliaArea = mousePosition.x >= windowSize.x - 800 && mousePosition.x < windowSize.x && mousePosition.y >= 0 && mousePosition.y < windowSize.y;
+
+                if (isInMandelbrotArea) {
+                    isZoomingMandelbrot = true;
+                    currentMandelbrotQuality = RenderQuality::good;
+                    mandelbrotFractal.handleZoom(delta, mousePosition);
+                    needsMandelbrotRender = true;
                 }
-                else if (current_mouse_pos.x > window.getSize().x - 800 && current_mouse_pos.y < 600 && julia_set.get_is_dragging()) {
-                    has_mouse_moved_julia_area = true;
-                    if (julia_set.get_is_dragging()) {
-                        julia_set.dragging({ current_mouse_pos.x, current_mouse_pos.y });
-                        should_render_julia = true;
-                        julia_quality = render_state::good;
+                else if (isInJuliaArea) {
+                    isZoomingJulia = true;
+                    currentJuliaQuality = RenderQuality::good;
+                    juliaFractal.handleZoom(delta, mousePosition);
+                    needsJuliaRender = true;
+                }
+            }
+
+            // --- Mouse Button Pressed ---
+            if (const auto* mouseButtonPressedEvent = event->getIf<sf::Event::MouseButtonPressed>()) {
+                 // Define approximate areas for interaction
+                 bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < 800 && mousePosition.y >= 0 && mousePosition.y < windowSize.y;
+                 bool isInJuliaArea = mousePosition.x >= windowSize.x - 800 && mousePosition.x < windowSize.x && mousePosition.y >= 0 && mousePosition.y < windowSize.y;
+
+                if (mouseButtonPressedEvent->button == sf::Mouse::Button::Left) {
+                    if (isInMandelbrotArea) {
+                        isLeftMouseDownMandelbrot = true;
+                        currentMandelbrotQuality = RenderQuality::good;
+                        mandelbrotFractal.start_dragging(mousePosition);
+                    } else if (isInJuliaArea) {
+                        isLeftMouseDownJulia = true;
+                        currentJuliaQuality = RenderQuality::good;
+                        juliaFractal.start_dragging(mousePosition);
+                    }
+                } else if (mouseButtonPressedEvent->button == sf::Mouse::Button::Right) { // Right Click for lines
+                    if (isInMandelbrotArea) {
+                        showMandelbrotIterationLines = true;
+                        mandelbrotFractal.drawIterationLines(mousePosition);
+                        needsMandelbrotRender = true;
                     }
                 }
             }
-            gui.handleEvent(*event);
-        } // --- End Event Handling ---
-        sf::Time delta_time = clock.restart();
-        ++current_fps;
 
-        is_dragging_fractal = has_mouse_moved_mandelbrot_area && is_mouse_pressed;
-        is_zooming = is_zooming && (time_since_interaction_end += delta_time.asMilliseconds()) > 500;
-        is_interacting = is_dragging_fractal || is_zooming;
+            // --- Mouse Button Released ---
+            if (const auto* mouseButtonReleasedEvent = event->getIf<sf::Event::MouseButtonReleased>()) {
+                if (mouseButtonReleasedEvent->button == sf::Mouse::Button::Left) {
+                    if (isLeftMouseDownMandelbrot) {
+                        isLeftMouseDownMandelbrot = false;
+                        currentMandelbrotQuality = RenderQuality::best;
+                        mandelbrotFractal.stop_dragging();
+                        needsMandelbrotRender = true; // Explicit render request after drag
+                    }
+                    if (isLeftMouseDownJulia) {
+                        isLeftMouseDownJulia = false;
+                        currentJuliaQuality = RenderQuality::best;
+                        juliaFractal.stop_dragging();
+                        needsJuliaRender = true; // Explicit render request after drag
+                    }
+                } else if (mouseButtonReleasedEvent->button == sf::Mouse::Button::Right) { // Right Click for lines
+                     bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < 800 && mousePosition.y >= 0 && mousePosition.y < windowSize.y;
+                     if (isInMandelbrotArea) {
+                         showMandelbrotIterationLines = false;
+                         needsMandelbrotRender = true; // Rerender to remove lines
+                     }
+                }
+            }
 
-        if (is_interacting) {
-            time_since_interaction_end = 0;
-            should_improve_quality = false;
+        } // --- End Event Handling Loop ---
+
+
+        // ========================================================================
+        // --- Update and Render Logic ---
+        // ========================================================================
+
+        sf::Time deltaTime = frameClock.restart();
+        frameCountForFPS++;
+
+        // --------------------------------------------------------------------
+        // --- Mandelbrot Update and Render Decision ---
+        // --------------------------------------------------------------------
+
+        bool isDraggingMandelbrotThisFrame = isLeftMouseDownMandelbrot && mouseMovedInMandelbrotArea;
+        bool isZoomingMandelbrotThisFrame = isZoomingMandelbrot;
+        bool isInteractingMandelbrotThisFrame = isDraggingMandelbrotThisFrame || isZoomingMandelbrotThisFrame;
+
+        if (isInteractingMandelbrotThisFrame) {
+            mandelbrotIdleTimeMs = 0.0f;
+        } else {
+            mandelbrotIdleTimeMs += deltaTime.asMilliseconds();
         }
-        else {
-            time_since_interaction_end += delta_time.asMilliseconds();
+
+        bool renderMandelbrotThisFrame = false;
+        RenderQuality qualityForMandelbrotRender = currentMandelbrotQuality;
+
+        // Determine if a render is needed based on flags, interaction, or idle time
+        if (needsMandelbrotRender) {
+            renderMandelbrotThisFrame = true;
+            qualityForMandelbrotRender = (currentMandelbrotQuality == RenderQuality::best) ? RenderQuality::best : RenderQuality::good;
+        }
+        if (isInteractingMandelbrotThisFrame) {
+            renderMandelbrotThisFrame = true;
+            qualityForMandelbrotRender = RenderQuality::good; // Force lower quality during interaction
+        }
+        else if (!renderMandelbrotThisFrame) { // Check for idle improvement only if not already rendering
+            const float IDLE_TIME_THRESHOLD_MS = 500.0f;
+            bool needsQualityImprovement = mandelbrotIdleTimeMs > IDLE_TIME_THRESHOLD_MS;
+            if (needsQualityImprovement && (currentMandelbrotQuality != RenderQuality::best || previousMandelbrotQuality != RenderQuality::best)) {
+                renderMandelbrotThisFrame = true;
+                qualityForMandelbrotRender = RenderQuality::best; // Improve quality after idle period
+            }
         }
 
-        bool can_improve_quality = time_since_interaction_end > 500;
-
-        if (is_interacting) {
-            mandelbrot_quality = render_state::good;
-        }
-        else if (can_improve_quality) {
-            mandelbrot_quality = render_state::best;
-        }
-
-        bool should_render =
-            should_render_mandelbrot ||
-            is_interacting ||
-            (can_improve_quality && !is_interacting && mandelbrot_quality != render_state::best);
-
-
-        if (should_render)
+        // Perform Mandelbrot Render
+        if (renderMandelbrotThisFrame)
         {
-            should_render_mandelbrot = false;
-            previous_mandelbrot_quality = mandelbrot_quality;
-            std::string quality_str = mandelbrot_quality == render_state::best ? "Best" : (mandelbrot_quality == render_state::good ? "Good" : "Bad");
-            mandelbrot_set.render(mandelbrot_quality);
+            needsMandelbrotRender = false; // Consume the flag
+            currentMandelbrotQuality = qualityForMandelbrotRender;
+            previousMandelbrotQuality = currentMandelbrotQuality;
 
-            auto start_draw_time = std::chrono::high_resolution_clock::now();
-            render_buffer.clear();
-            window.clear();
-            render_buffer.draw(mandelbrot_set);
-            if (is_drawing_julia) {
-                render_buffer.draw(julia_set);
+            // mandelbrotRenderClock.restart();
+            mandelbrotFractal.render(currentMandelbrotQuality);
+            // auto renderDuration = mandelbrotRenderClock.getElapsedTime();
+            // std::cout << "Mandelbrot render time: " << renderDuration.asMilliseconds() << " ms" << std::endl;
+        }
+
+
+        // --------------------------------------------------------------------
+        // --- Julia Update and Render Decision ---
+        // --------------------------------------------------------------------
+
+        bool isDraggingJuliaThisFrame = isLeftMouseDownJulia && mouseMovedInJuliaArea;
+        bool isZoomingJuliaThisFrame = isZoomingJulia;
+        bool isInteractingJuliaThisFrame = isDraggingJuliaThisFrame || isZoomingJuliaThisFrame;
+
+        if (isInteractingJuliaThisFrame) {
+            juliaIdleTime = sf::Time::Zero;
+        } else {
+            juliaIdleTime += deltaTime;
+        }
+
+        bool renderJuliaThisFrame = false;
+        RenderQuality qualityForJuliaRender = currentJuliaQuality;
+        // Define approximate area for mouse interaction triggering Julia update
+        bool isMouseInMandelbrotUpdateArea = mousePosition.x >= 0 && mousePosition.x < 800 && mousePosition.y >= 0 && mousePosition.y < windowSize.y;
+
+
+        // Determine if Julia needs rendering
+        if (isTimelapseActive) {
+             renderJuliaThisFrame = true;
+             qualityForJuliaRender = RenderQuality::good;
+        }
+        else if (mouseMovedInMandelbrotArea && !blockJuliaParameterUpdate && isMouseInMandelbrotUpdateArea)
+        {
+             renderJuliaThisFrame = true;
+             isJuliaVisible = true;
+             qualityForJuliaRender = RenderQuality::good; // Quick render for mouse tracking
+
+             // Calculate new Julia parameters based on mouse position relative to Mandelbrot view
+             juliaSeedReal = -(mandelbrotFractal.get_x_offset() - (static_cast<double>(mousePosition.x) / mandelbrotFractal.get_zoom_x()));
+             juliaSeedImag = -(mandelbrotFractal.get_y_offset() - (static_cast<double>(mousePosition.y) / mandelbrotFractal.get_zoom_y()));
+        }
+        else { // Check other triggers if not timelapse or mouse move
+            if (needsJuliaRender) {
+                renderJuliaThisFrame = true;
+                qualityForJuliaRender = (currentJuliaQuality == RenderQuality::best) ? RenderQuality::best : RenderQuality::good;
+            }
+            if (isInteractingJuliaThisFrame) {
+                 renderJuliaThisFrame = true;
+                 qualityForJuliaRender = RenderQuality::good;
+            }
+            else if (!renderJuliaThisFrame) { // Check idle improvement
+                const float IDLE_TIME_THRESHOLD_JULIA_MS = 500.0f;
+                bool needsImprovement = juliaIdleTime.asMilliseconds() > IDLE_TIME_THRESHOLD_JULIA_MS;
+                if (needsImprovement && (currentJuliaQuality != RenderQuality::best || previousJuliaQuality != RenderQuality::best))
+                {
+                    renderJuliaThisFrame = true;
+                    qualityForJuliaRender = RenderQuality::best;
+                }
+            }
+        }
+
+        // Perform Julia Render
+        if (renderJuliaThisFrame)
+        {
+            needsJuliaRender = false; // Consume flag
+            currentJuliaQuality = qualityForJuliaRender;
+            previousJuliaQuality = currentJuliaQuality;
+
+            // juliaRenderClock.restart();
+
+            if (isTimelapseActive) {
+                 juliaFractal.update_timelapse(); // Update internal parameters
+                 juliaFractal.render(currentJuliaQuality); // Render using internal state
+            } else {
+                 juliaFractal.render(currentJuliaQuality, juliaSeedReal, juliaSeedImag); // Render with specific parameters
             }
 
-            render_buffer.display();
-            window.draw(sf::Sprite(render_buffer.getTexture()));
-            window.draw(fps_text);
-            window.draw(mandelbrot_hardness_text);
-            window.draw(julia_hardness_text);
-            gui.draw();
+            // Ensure position is correct (might change if texture size changes dynamically)
+            juliaFractal.setPosition({ static_cast<float>(windowSize.x - juliaFractal.getTexture().getSize().x), 0.f });
 
-            auto render_time = mandelbrot_render_timer.restart();
-            window.display();
-            auto end_draw_time = std::chrono::high_resolution_clock::now();
-            auto draw_duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_draw_time - start_draw_time);
-            std::cout << "Time needed to apply SSAA4 and draw to window: " << draw_duration.count() << " ms\n";
-            std::cout << "Mandelbrot set " << "(" << quality_str << ")" << " was drawn in : " << render_time.asMilliseconds() << " ms" << std::endl;
-            std::cout << "Zoom scale: " << mandelbrot_set.get_zoom_x() << "\n";
-            should_render_mandelbrot = false;
-            if (should_improve_quality)
-                previous_mandelbrot_quality = static_cast<render_state>(static_cast<int>(previous_mandelbrot_quality) + 1);
-        } // --- End Mandelbrot Rendering ---
-
-        bool is_dragging_fractal_julia = has_mouse_moved_julia_area && is_mouse_pressed_julia;
-        is_zooming_julia = is_zooming_julia && (time_since_interaction_end_julia += delta_time.asMilliseconds()) > 500;
-        is_interacting_julia = is_dragging_fractal_julia || is_zooming_julia;
-        bool is_interacting_julia_this_frame = is_interacting_julia || should_render_julia;
-
-        if (is_interacting_julia_this_frame) {
-            time_since_interaction_end_julia = 0;
-        }
-        else {
-            time_since_interaction_end_julia += delta_time.asMilliseconds();
-        }
-
-        bool can_improve_julia_quality = time_since_interaction_end_julia > 500;
-
-        render_state qual = julia_quality;
-
-        if (is_interacting_julia_this_frame) {
-            julia_quality = render_state::good;
-        }
-        else if (can_improve_julia_quality) {
-            julia_quality = render_state::best;
-        }
-
-        bool should_render_julia_this_frame = (
-            should_render_julia ||
-            is_interacting_julia_this_frame ||
-            (can_improve_julia_quality && !is_interacting_julia_this_frame && qual != render_state::best));
-
-        if (timelapse_rendering) {
-            julia_set.update_timelapse();
-
-            render_buffer.clear();
-            window.clear();
-
-            render_buffer.draw(mandelbrot_set);
-            render_buffer.draw(julia_set);
-
-            render_buffer.display();
-
-            window.draw(sf::Sprite(render_buffer.getTexture()));
-            window.draw(fps_text);
-            window.draw(mandelbrot_hardness_text);
-            window.draw(julia_hardness_text);
-            gui.draw();
-
-            window.display();
-        }
-
-        // --- Julia Rendering (Conditional on Mouse Move in Mandelbrot Area) ---
-        else if (has_mouse_moved_mandelbrot_area && !block_julia_updates)
-        {
-            is_drawing_julia = true;
-            julia_zx = -(mandelbrot_set.get_x_offset() - (current_mouse_pos.x / mandelbrot_set.get_zoom_x()));
-            julia_zy = -(mandelbrot_set.get_y_offset() - (current_mouse_pos.y / mandelbrot_set.get_zoom_y()));
-
-            julia_set.render(render_state::good, julia_zx, julia_zy);
-            julia_set.setPosition({ static_cast<float>(window.getSize().x - 800), 0 });
-
-            render_buffer.clear();
-            window.clear();
-
-            render_buffer.draw(mandelbrot_set);
-            render_buffer.draw(julia_set);
-
-            render_buffer.display();
-
-            window.draw(sf::Sprite(render_buffer.getTexture()));
-            window.draw(fps_text);
-            window.draw(mandelbrot_hardness_text);
-            window.draw(julia_hardness_text);
-            gui.draw();
-
-            window.display();
-
-            auto julia_render_time = julia_render_timer.restart();
-
-            has_mouse_moved_mandelbrot_area = false;
-            should_render_julia = false;
-        } // --- End Julia Rendering (Conditional on Mouse Move in Mandelbrot Area) ---
-
-        else if (should_render_julia_this_frame)
-        {
-            should_render_julia = false;
-            previous_julia_quality = julia_quality;
-            std::string quality_str_julia = julia_quality == render_state::best ? "Best" : "Good";
-
-            julia_set.render(julia_quality, julia_zx, julia_zy);
-            julia_set.setPosition({ static_cast<float>(window.getSize().x - 800), 0 });
-
-            render_buffer.clear();
-            window.clear();
-            render_buffer.draw(mandelbrot_set);
-            if (is_drawing_julia) {
-                render_buffer.draw(julia_set);
-            }
-
-            render_buffer.display();
-            window.draw(sf::Sprite(render_buffer.getTexture()));
-            window.draw(fps_text);
-            window.draw(mandelbrot_hardness_text);
-            window.draw(julia_hardness_text);
-            gui.draw();
-            window.display();
-
-
-            std::cout << "julia set " << "(" << quality_str_julia << ")\n";
-            if (can_improve_julia_quality)
-                previous_julia_quality = static_cast<render_state>(static_cast<int>(previous_julia_quality) + 1);
+            // auto juliaRenderDuration = juliaRenderClock.getElapsedTime();
+            // std::cout << "Julia render time: " << juliaRenderDuration.asMilliseconds() << " ms" << std::endl;
         }
 
 
-        else {
-            // --- No Fractal Render Needed, Just UI ---
-            window.clear();
-            window.draw(sf::Sprite(render_buffer.getTexture()));
-            window.draw(fps_text);
-            window.draw(mandelbrot_hardness_text);
-            window.draw(julia_hardness_text);
-            gui.draw();
-            window.display();
-        } // --- End No Fractal Render Needed, Just UI --
+        // ========================================================================
+        // --- Final Drawing Stage ---
+        // ========================================================================
+        window.clear();
+        renderTarget.clear();
+
+        // Draw fractals to the render target
+        renderTarget.draw(mandelbrotFractal);
+        if (isJuliaVisible || isTimelapseActive) {
+            renderTarget.draw(juliaFractal);
+        }
+
+        renderTarget.display();
+
+        // Draw the render target's texture to the window
+        window.draw(sf::Sprite(renderTarget.getTexture()));
+
+        // Draw UI overlays
+        window.draw(fpsDisplay);
+        window.draw(mandelbrotHardnessDisplay);
+        window.draw(juliaHardnessDisplay);
+        gui.draw();
+
+        window.display();
 
 
-        // --- FPS Counter Update ---
-        if (fps_timer.getElapsedTime().asSeconds() > 0.2f) {
-            float elapsed = fps_timer.getElapsedTime().asSeconds();
-            fps_text.setString(std::to_string(current_fps / elapsed)); // Cast to int for cleaner FPS display
-            mandelbrot_hardness_text.setString(std::to_string(mandelbrot_set.get_hardness_coeff()));
-            julia_hardness_text.setString(std::to_string(julia_set.get_hardness_coeff()));
-            current_fps = 0;
-            fps_timer.restart();
-        } // --- End FPS Counter Update ---
+        // ========================================================================
+        // --- Post-Frame Updates ---
+        // ========================================================================
 
-        should_render_mandelbrot = should_render_mandelbrot || mandelbrot_quality != render_state::best;
+        // Update FPS counter display
+        if (fpsUpdateClock.getElapsedTime().asSeconds() > 0.2f) {
+            float elapsedSeconds = fpsUpdateClock.restart().asSeconds();
+            float fps = (elapsedSeconds > 0) ? static_cast<float>(frameCountForFPS) / elapsedSeconds : 0.0f;
+            fpsDisplay.setString("FPS: " + std::to_string(static_cast<int>(fps)));
+            mandelbrotHardnessDisplay.setString("M-Hardness: " + std::to_string(mandelbrotFractal.get_hardness_coeff()));
+            juliaHardnessDisplay.setString("J-Hardness: " + std::to_string(juliaFractal.get_hardness_coeff()));
+            frameCountForFPS = 0;
+        }
+
+        // Reset per-frame event flags for the next iteration
+        mouseMovedInMandelbrotArea = false;
+        isZoomingMandelbrot = false;
+        mouseMovedInJuliaArea = false;
+        isZoomingJulia = false;
 
     } // --- End Main Render Loop ---
 }
 
 int main() {
-    std::thread mainThread(main_thread);
-    mainThread.join();
+    std::thread mainAppThread(main_thread);
+    mainAppThread.join();
+    return 0;
 }

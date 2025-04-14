@@ -44,17 +44,17 @@ __global__ void fractal_rendering(
 		}
 
 
-		total_iterations[id] = current_iteration;
-		//__syncthreads();
+		total_iterations[id] = static_cast<unsigned int>(current_iteration);
+		__syncthreads();
 
-		for (int s = blockDim.x * blockDim.y / 2; s > 0; s >>= 1) {
+		for (unsigned int s = blockDim.x * blockDim.y / 2; s > 0; s >>= 1) {
 			if (id < s) {
 				total_iterations[id] += total_iterations[id + s];
 			}
-			//__syncthreads();
+			__syncthreads();
 		}
+
 		if (id == 0) {
-			//d_total_iterations += total_iterations[0];
 			atomicAdd(d_total_iterations, total_iterations[0]);
 		}
 

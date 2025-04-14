@@ -125,6 +125,12 @@ template <typename Derived>
 double FractalBase<Derived>::get_hardness_coeff() { return hardness_coeff; }
 
 template <typename Derived>
+sf::Texture FractalBase<Derived>::getTexture() { return texture; }
+
+template<typename Derived>
+sf::Sprite FractalBase<Derived>::get_sprite_rect() { return sprite; }
+
+template <typename Derived>
 void FractalBase<Derived>::setMaxComputation(float Gflops) { maxComputation = 50.0f / 90 * Gflops; }
 
 template <typename Derived>
@@ -254,7 +260,6 @@ void FractalBase<Derived>::post_processing() {
         auto end = std::chrono::high_resolution_clock::now();
         cudaMemcpyAsync(compressed, ssaa_buffer, 800 * 600 * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost, stream);
 
-        std::cout << "SSAA4 time + copying to host: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << " ms" << std::endl;
         cudaStreamSynchronize(stream);
         image = sf::Image({ 800, 600 }, compressed);
     }
