@@ -97,6 +97,8 @@ protected:
     dim3 dimGrid;
     dim3 dimBlock;
     bool* stopFlagDevice;
+    unsigned int basic_width;
+    unsigned int basic_height;
     unsigned int width;
     unsigned int height;
     cudaStream_t stream;
@@ -152,6 +154,8 @@ public:
     void setMaxComputation(float Gflops);
     void setPallete(std::string name);
     Palletes getPallete();
+    sf::Vector2i get_resolution();
+
     void SetDegreesOffsetForHSV(int degrees);
     sf::Texture getTexture();
     sf::Sprite get_sprite_rect();
@@ -160,6 +164,8 @@ public:
     **@param max_iters
     */
 	void set_max_iters(unsigned int max_iters);
+
+    void set_resolution(sf::Vector2i target_resolution);
 
     void post_processing();
 

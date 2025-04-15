@@ -27,7 +27,7 @@ __global__ void fractal_rendering(
 
     const unsigned int x =   blockIdx.x * blockDim.x + threadIdx.x;
     const unsigned int y =   blockIdx.y * blockDim.y + threadIdx.y;
-    const unsigned int id = threadIdx.y * blockDim.y + threadIdx.x;
+    const unsigned int id = threadIdx.y * blockDim.x + threadIdx.x;
 
     if (x == 0 && y == 0) {
         *d_total_iterations = 0;
@@ -114,7 +114,7 @@ __global__ void fractal_rendering(
 
     const unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
     const unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
-    const unsigned int id = threadIdx.y * blockDim.y + threadIdx.x;
+    const unsigned int id = threadIdx.y * blockDim.x + threadIdx.x;
 
     if (x == 0 && y == 0) {
         *d_total_iterations = 0;

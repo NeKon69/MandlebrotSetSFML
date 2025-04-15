@@ -37,7 +37,7 @@ void main_thread() {
      * Window and rendering target setup using SFML. An off-screen render texture
      * is used to draw the fractals before displaying them on the main window.
      */
-    const sf::Vector2u windowSize = { 1920, 1080 };
+    const sf::Vector2u windowSize = { 2560, 1440 };
     sf::RenderWindow window(sf::VideoMode(windowSize), "Fractals");
     sf::RenderTexture renderTarget;
     renderTarget = sf::RenderTexture({windowSize.x, windowSize.y});
@@ -153,15 +153,37 @@ void main_thread() {
         needsJuliaRender = true;
         juliaFractal.setPallete(str.toStdString());
         });
+    tgui::EditBox::Ptr resolution_picker = tgui::EditBox::create();
+    resolution_picker->setText("800x600");
+    resolution_picker->setPosition({ 810, 70 });
+    resolution_picker->setSize({100, 24});
+    resolution_picker->onTextChange([&](const tgui::String& str) {
+        std::string text = str.toStdString();
+        size_t x_pos = text.find('x');
+        if (x_pos != std::string::npos && x_pos > 1 && std::size(text) - x_pos > 1) {
+            std::string width_str = text.substr(0, x_pos);
+            std::string height_str = text.substr(x_pos + 1);
+            int width = std::stoi(width_str);
+            int height = std::stoi(height_str);
+            if(width < 200 || height < 200) return;
+            mandelbrotFractal.set_resolution({width, height});
+            juliaFractal.set_resolution({width, height});
+            needsMandelbrotRender = true;
+        }
+    });
+
 
     gui.add(paletteSelector);
     gui.add(paletteOffsetSlider);
+    gui.add(resolution_picker);
 
     /*
      * The main application loop continues as long as the window is open.
      * It handles events, updates state, determines rendering needs, performs rendering,
      * and draws the final frame.
      */
+    mandelbrotFractal.set_resolution({1200, 800});
+
     while (window.isOpen()) {
         /*
          * Event processing loop: handles all user input and window events.
@@ -316,7 +338,7 @@ void main_thread() {
                 else if (isInJuliaArea) {
                     isZoomingJulia = true;
                     currentJuliaQuality = RenderQuality::good;
-                    juliaFractal.handleZoom(delta, mousePosition);
+                    juliaFractal.handleZoom(delta, {mousePosition.x - 1920 + 800, mousePosition.y});
                     needsJuliaRender = true;
                 }
             }

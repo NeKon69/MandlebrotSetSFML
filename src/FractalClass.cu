@@ -6,8 +6,6 @@
 #include <random>
 #include <math.h>
 
-bool running_other_core = false;
-
 sf::Image stretchImageNearestNeighbor(const sf::Image& source, unsigned int targetWidth, unsigned int targetHeight) {
     sf::Image result({ targetWidth, targetHeight }, sf::Color::Black);
 
@@ -32,7 +30,7 @@ FractalBase<Derived>::FractalBase()
     zoom_x(basic_zoom_x), zoom_y(basic_zoom_y),
     x_offset(3.0), y_offset(1.85),
     zoom_factor(1.0), zoom_speed(0.1),
-    zoom_scale(1.0), width(400), height(300),
+    zoom_scale(1.0), width(800), height(600), basic_width(800), basic_height(600),
     maxComputation(50.f), sprite(texture), iterationline(sf::PrimitiveType::LineStrip),
     gen(rd()), disX(-2.f, 2.f), disY(-1.5f, 1.5f) ,disVelX(-0.13f, 0.13f),
     disVelY(-0.1f, 0.1f)
@@ -57,16 +55,17 @@ FractalBase<Derived>::FractalBase()
     cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
 
     // Alloc data for the GPU uncompressed image
-    cudaMallocManaged(&d_pixels, 1600 * 1200 * 4 * sizeof(uint32_t));
+    // We are allocating twice the size of the image because we are using SSAA
+    cudaMalloc(&d_pixels, width * 2 * height * 2 * 4 * sizeof(char4));
 
     // Alloc data for the CPU uncompressed image
-    cudaMallocHost(&pixels, 1600 * 1200 * 4 * sizeof(char4));
+    cudaMallocHost(&pixels, width * 2 * height * 2 * 4 * sizeof(char4));
 
     // Alloc data for the GPU compressed image
-    cudaMalloc(&ssaa_buffer, 800 * 600 * 4 * sizeof(char4));
+    cudaMalloc(&ssaa_buffer, width * height * 4 * sizeof(char4));
 
     // Alloc data for the CPU compressed image
-	cudaMallocHost(&compressed, 800 * 600 * 4 * sizeof(char4));
+	cudaMallocHost(&compressed, width * height * 4 * sizeof(char4));
 
 	cudaStreamCreate(&stream);
 
@@ -243,7 +242,47 @@ template <typename Derived>
 Palletes FractalBase<Derived>::getPallete() { return curr_pallete; }
 
 template <typename Derived>
+sf::Vector2i FractalBase<Derived>::get_resolution() { return {int(basic_width), int(basic_height)}; }
+
+template <typename Derived>
 void FractalBase<Derived>::SetDegreesOffsetForHSV(int degrees) { degrees_offsetForHSV = degrees; setPallete("HSV"); }
+
+template <typename Derived>
+void FractalBase<Derived>::set_resolution(sf::Vector2i target_resolution) {
+    unsigned int old_width = width, old_height = height;
+
+    width = basic_width = target_resolution.x;
+    height = basic_height = target_resolution.y;
+
+    double center_x = x_offset + (old_width / (zoom_x * zoom_scale)) / 2.0;
+    double center_y = y_offset + (old_height / (zoom_y * zoom_scale)) / 2.0;
+
+    zoom_x = basic_zoom_x * zoom_factor;
+    zoom_y = basic_zoom_y * zoom_factor;
+
+    x_offset = center_x - (width / (zoom_x * zoom_scale)) / 2.0;
+    y_offset = center_y - (height / (zoom_y * zoom_scale)) / 2.0;
+
+
+    cudaFree(d_pixels);
+    cudaFreeHost(pixels);
+    cudaFree(ssaa_buffer);
+    cudaFreeHost(compressed);
+
+    // Alloc data for the GPU uncompressed image
+    // We are allocating twice the size of the image because we are using SSAA
+    cudaMalloc(&d_pixels, width * 2 * height * 2 * 4 * sizeof(char4));
+
+    // Alloc data for the CPU uncompressed image
+    cudaMallocHost(&pixels, width * 2 * height * 2 * 4 * sizeof(char4));
+
+    // Alloc data for the GPU compressed image
+    cudaMalloc(&ssaa_buffer, width * height * 4 * sizeof(char4));
+
+    // Alloc data for the CPU compressed image
+    cudaMallocHost(&compressed, width * height * 4 * sizeof(char4));
+}
+
 
 template <typename Derived>
 void FractalBase<Derived>::post_processing() {
@@ -256,12 +295,12 @@ void FractalBase<Derived>::post_processing() {
         );
 
         auto start = std::chrono::high_resolution_clock::now();
-        ANTIALIASING_SSAA4<<<dimGrid, dimBlock, 0, stream>>>(d_pixels, ssaa_buffer, 1600, 1200, 800, 600);
+        ANTIALIASING_SSAA4<<<dimGrid, dimBlock, 0, stream>>>(d_pixels, ssaa_buffer, basic_width * 2, basic_height * 2, basic_width, basic_height);
         auto end = std::chrono::high_resolution_clock::now();
-        cudaMemcpyAsync(compressed, ssaa_buffer, 800 * 600 * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost, stream);
+        cudaMemcpyAsync(compressed, ssaa_buffer, width * height * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost, stream);
 
         cudaStreamSynchronize(stream);
-        image = sf::Image({ 800, 600 }, compressed);
+        image = sf::Image({ basic_width, basic_height }, compressed);
     }
     else {
         cudaEventRecord(stop_rendering, stream);
@@ -275,7 +314,7 @@ void FractalBase<Derived>::post_processing() {
         if (status != cudaSuccess && (hardness_coeff > 0) || std::is_same<Derived, fractals::julia>::value || zoom_x > 1e7) {
             cudaStreamSynchronize(stream);
         }
-        image = sf::Image({ 800, 600 }, pixels);
+        image = sf::Image({ basic_width, basic_height }, pixels);
     }
     texture = sf::Texture(image, true);
     sprite.setTexture(texture, true);
@@ -283,6 +322,7 @@ void FractalBase<Derived>::post_processing() {
 }
 
 // that code served me good in the past, however it's being replaced with better version with atomic operations
+// nevermind, atomic sucks!!! async is the way to go
 // UwU sooooo saaaad UwU
 //template <typename Derived>
 //void FractalBase<Derived>::checkEventAndSetFlag(cudaEvent_t event) {
@@ -300,35 +340,31 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
     cudaEvent_t event;
     cudaEventCreate(&event);
 
-    int new_width, new_height;
+    unsigned int old_width = width, old_height = height;
+
     double new_zoom_scale;
 
     if (quality == render_state::good) {
-        new_width = 800;
-        new_height = 600;
+        width = basic_width;
+        height = basic_height;
         antialiasing = false;
         new_zoom_scale = 1.0;
     }
-    else { // render_state::best
-        new_width = 1600;
-        new_height = 1200;
+    else { // render_state::best, Antialiasing -> more pixels need to be rendered
+        width = basic_width * 2;
+        height = basic_height * 2;
         antialiasing = true;
         new_zoom_scale = 2.0;
     }
 
-    if (width != new_width || height != new_height) {
-        double center_x = x_offset + (width / (zoom_x * zoom_scale)) / 2.0;
-        double center_y = y_offset + (height / (zoom_y * zoom_scale)) / 2.0;
+    if (width != old_width || height != old_height) {
+        double center_x = x_offset + (old_width / (zoom_x * zoom_scale)) / 2.0;
+        double center_y = y_offset + (old_height / (zoom_y * zoom_scale)) / 2.0;
 
         zoom_scale = new_zoom_scale;
-        width = new_width;
-        height = new_height;
 
         x_offset = center_x - (width / (zoom_x * zoom_scale)) / 2.0;
         y_offset = center_y - (height / (zoom_y * zoom_scale)) / 2.0;
-
-        width = new_width;
-        height = new_height;
     }
 
     double render_zoom_x = zoom_x * zoom_scale;
@@ -373,7 +409,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
             max_iterations, d_total_iterations
             );
         err = cudaGetLastError();
-        if (dimBlock.x < 8) {
+        if (dimBlock.x < 2) {
             std::cout << "Critical Issue (mandelbrot set): " << cudaGetErrorString(err) << "\n";
         }
     }
@@ -389,35 +425,31 @@ void FractalBase<fractals::julia>::render(
     cudaEvent_t event;
     cudaEventCreate(&event);
 
-    int new_width, new_height;
+    unsigned int old_width = width, old_height = height;
+
     double new_zoom_scale;
 
     if (quality == render_state::good) {
-        new_width = 800;
-        new_height = 600;
+        width = basic_width;
+        height = basic_height;
         antialiasing = false;
         new_zoom_scale = 1.0;
     }
-    else { // render_state::best
-        new_width = 1600;
-        new_height = 1200;
+    else { // render_state::best, Antialiasing -> more pixels need to be rendered
+        width = basic_width * 2;
+        height = basic_height * 2;
         antialiasing = true;
         new_zoom_scale = 2.0;
     }
 
-    if (width != new_width || height != new_height) {
-        double center_x = x_offset + (width / (zoom_x * zoom_scale)) / 2.0;
-        double center_y = y_offset + (height / (zoom_y * zoom_scale)) / 2.0;
+    if (width != old_width || height != old_height) {
+        double center_x = x_offset + (old_width / (zoom_x * zoom_scale)) / 2.0;
+        double center_y = y_offset + (old_height / (zoom_y * zoom_scale)) / 2.0;
 
         zoom_scale = new_zoom_scale;
-        width = new_width;
-        height = new_height;
 
         x_offset = center_x - (width / (zoom_x * zoom_scale)) / 2.0;
         y_offset = center_y - (height / (zoom_y * zoom_scale)) / 2.0;
-
-        width = new_width;
-        height = new_height;
     }
 
     double render_zoom_x = zoom_x * zoom_scale;
@@ -450,7 +482,7 @@ void FractalBase<fractals::julia>::render(
             float(max_iterations), d_total_iterations, zx, zy
             );
         err = cudaGetLastError();
-        if (dimBlock.x < 8) {
+        if (dimBlock.x < 2) {
             std::cout << "Critical Issue (julia set): " << cudaGetErrorString(err) << "\n";
         }
     }
@@ -529,6 +561,8 @@ void FractalBase<Derived>::draw(sf::RenderTarget& target, sf::RenderStates state
     target.draw(iterationline, 0, drawen_iterations, states);
 }
 template <typename Derived>
+
+// Mouse pos should be relative to the picture and not to the screen
 void FractalBase<Derived>::handleZoom(double wheel_delta, const sf::Vector2i mouse_pos) {
     double old_zoom_x = zoom_x;
     double old_zoom_y = zoom_y;
@@ -544,9 +578,7 @@ void FractalBase<Derived>::handleZoom(double wheel_delta, const sf::Vector2i mou
 
     double image_mouse_x = mouse_pos.x * 1.0;
     double image_mouse_y = mouse_pos.y * 1.0;
-    if (std::is_same<Derived, fractals::julia>::value) {
-        image_mouse_x -= 1920 - 800;
-    }
+
 
     x_offset = old_x_offset + (image_mouse_x / zoom_x - image_mouse_x / old_zoom_x);
     y_offset = old_y_offset + (image_mouse_y / zoom_y - image_mouse_y / old_zoom_y);
@@ -590,20 +622,6 @@ void FractalBase<fractals::julia>::start_timelapse() {
     timelapse.zy = disY(gen);
     timelapse.velocityX = disVelX(gen);
 	timelapse.velocityY = disVelY(gen);
-}
-
-float getBoundedVelocity(float currentPos, float currentVel, float minPos, float maxPos, float minVel, float maxVel) {
-    const float margin = 0.2f;
-
-    if (currentPos > maxPos - margin && currentVel > 0) {
-        return std::max(-maxVel, currentVel * -0.5f);
-    }
-
-    else if (currentPos < minPos + margin && currentVel < 0) {
-        return std::min(maxVel, currentVel * -0.5f);
-    }
-
-    return minVel + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX / (maxVel - minVel)));
 }
 
 template <>

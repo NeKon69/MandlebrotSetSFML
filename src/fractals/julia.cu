@@ -13,7 +13,7 @@ __global__ void fractal_rendering(
 
 	int x = blockIdx.x * blockDim.x + threadIdx.x;
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
-	int id = threadIdx.y * blockDim.y + threadIdx.x;
+	int id = threadIdx.y * blockDim.x + threadIdx.x;
 
 	if (x == 0 && y == 0) {
 		*d_total_iterations = 0;
