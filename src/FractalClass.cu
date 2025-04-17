@@ -309,9 +309,9 @@ void FractalBase<Derived>::post_processing() {
         cudaError_t status = cudaEventQuery(stop_rendering);
         hardness_coeff = *h_total_iterations / (width * height * 1.0);
         // ToDo implement a more complex solution for checking if the kernel is finished and not just blindly synchronizing
-        // the problem with current implementation is that it will wait for the kernel to finish even if you dont need to
+        // the problem with current implementation is that it will wait for the kernel to finish (copying, other stuff, you know the point, basically sync the stream) even if you dont need to
         // that situation may occur if you have good enough gpu, and you don't have that bad of frame delay  ( < 5)
-        if (status != cudaSuccess && (hardness_coeff > 0) || std::is_same<Derived, fractals::julia>::value || zoom_x > 1e7) {
+        if ((status != cudaSuccess && hardness_coeff > 0) || zoom_x > 1e7 || zoom_y > 1e7) {
             cudaStreamSynchronize(stream);
         }
         image = sf::Image({ basic_width, basic_height }, pixels);
@@ -319,6 +319,82 @@ void FractalBase<Derived>::post_processing() {
     texture = sf::Texture(image, true);
     sprite.setTexture(texture, true);
     sprite.setPosition({ 0, 0 });
+}
+
+// To surely not forget anything lets make sure to delete everything and reallocate
+template <typename Derived>
+void FractalBase<Derived>::reset(){
+    cudaFree(d_pixels);
+    cudaFree(d_palette);
+    cudaFree(stopFlagDevice);
+    cudaFree(d_total_iterations);
+    cudaFreeHost(pixels);
+    cudaFreeHost(compressed);
+    cudaFreeHost(h_total_iterations);
+    cudaEventDestroy(start_rendering);
+    cudaEventDestroy(stop_rendering);
+    cudaStreamDestroy(stream);
+    cudaStreamDestroy(dataStream);
+
+    max_iterations = 300;
+    basic_zoom_x = 240.0;
+    basic_zoom_y = 240.0;
+    zoom_x = basic_zoom_x;
+    zoom_y = basic_zoom_y;
+    x_offset = 3.0;
+    y_offset = 1.85;
+    zoom_factor = 1.0;
+    zoom_speed = 0.1;
+    zoom_scale = 1.0;
+    width = 800;
+    height = 600;
+    basic_width = 800;
+    basic_height = 600;
+
+    if (std::is_same<Derived, fractals::julia>::value) {
+        x_offset = 2.5;
+        //y_offset = 1.25;
+        palette = createHSVPalette(20000);
+        paletteSize = 20000;
+    }
+    else {
+        palette = createHSVPalette(20000);
+        paletteSize = 20000;
+    }
+
+    cudaHostAlloc(&h_doubleCancelFlag, sizeof(int), 0);
+    *h_doubleCancelFlag = 0;
+    cudaMalloc(&d_doubleCancelFlag, sizeof(int));
+    cudaMemcpy(d_doubleCancelFlag, h_doubleCancelFlag, sizeof(int), cudaMemcpyHostToDevice);
+
+    cudaMalloc(&d_palette, palette.size() * sizeof(sf::Color));
+    cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+
+    // Alloc data for the GPU uncompressed image
+    // We are allocating twice the size of the image because we are using SSAA
+    cudaMalloc(&d_pixels, width * 2 * height * 2 * 4 * sizeof(char4));
+
+    // Alloc data for the CPU uncompressed image
+    cudaMallocHost(&pixels, width * 2 * height * 2 * 4 * sizeof(char4));
+
+    // Alloc data for the GPU compressed image
+    cudaMalloc(&ssaa_buffer, width * height * 4 * sizeof(char4));
+
+    // Alloc data for the CPU compressed image
+    cudaMallocHost(&compressed, width * height * 4 * sizeof(char4));
+
+    cudaStreamCreate(&stream);
+
+    cudaEventCreate(&start_rendering);
+    cudaEventCreate(&stop_rendering);
+
+    cudaMalloc(&d_total_iterations, sizeof(int));
+    cudaMemset(d_total_iterations, 0, sizeof(int));
+    cudaMallocHost(&h_total_iterations , sizeof(int));
+
+    cudaStreamCreate(&dataStream);
+
+    iterationpoints.resize(max_iterations);
 }
 
 // that code served me good in the past, however it's being replaced with better version with atomic operations

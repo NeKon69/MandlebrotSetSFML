@@ -9,6 +9,13 @@
 
 using RenderQuality = render_state;
 
+void ComboBoxCreator(tgui::ComboBox::Ptr& comboBox, const std::vector<std::string>& items, const std::string& defaultItem) {
+    for (const auto& item : items) {
+        comboBox->addItem(item);
+    }
+    comboBox->setSelectedItem(defaultItem);
+}
+
 /*
  * This function contains the main application logic, running in a separate thread.
  * It initializes the window, UI, fractal renderers, and handles the event loop,
@@ -102,8 +109,6 @@ void main_thread() {
     JuliaFractal juliaFractal;
     juliaFractal.setPosition({ static_cast<float>(windowSize.x - 800), 0.f });
 
-    window.setFramerateLimit(360);
-
     /*
      * GPU performance estimation to potentially calibrate fractal computation complexity.
      * The measured GFLOPS value is passed to the fractal objects.
@@ -121,68 +126,329 @@ void main_thread() {
      */
     tgui::Gui gui(window);
 
-    tgui::Slider::Ptr paletteOffsetSlider = tgui::Slider::create();
-    paletteOffsetSlider->setMinimum(0);
-    paletteOffsetSlider->setMaximum(360);
-    paletteOffsetSlider->onValueChange([&](float pos) {
-        if (mandelbrotFractal.getPallete() == Palletes::HSV || mandelbrotFractal.getPallete() == Palletes::CyclicHSV)
-            mandelbrotFractal.SetDegreesOffsetForHSV(static_cast<int>(pos));
-        if (juliaFractal.getPallete() == Palletes::HSV || juliaFractal.getPallete() == Palletes::CyclicHSV)
-            juliaFractal.SetDegreesOffsetForHSV(static_cast<int>(pos));
-        needsMandelbrotRender = true;
-        needsJuliaRender = true;
-        });
-    paletteOffsetSlider->setPosition({ 810, 40 });
-    paletteOffsetSlider->setSize({200, 18});
-
-    tgui::ComboBox::Ptr paletteSelector = tgui::ComboBox::create();
-    paletteSelector->setPosition({ 810, 10 });
-    paletteSelector->setSize({200, 24});
     const std::vector<std::string> paletteNames = {
-        "HSV", "BlackOWhite", "Basic", "OscillatingGrayscale", "Fire", "Pastel",
-        "Interpolated", "CyclicHSV", "FractalPattern", "PerlinNoise", "Water",
-        "Sunset", "DeepSpace", "Physchodelic", "IceCave", "ElectricNebula",
-        "AccretionDisk"};
-    for(const auto& name : paletteNames) {
-        paletteSelector->addItem(name);
-    }
-    paletteSelector->setSelectedItem("HSV");
-    paletteSelector->onItemSelect([&](const tgui::String& str) {
-        needsMandelbrotRender = true;
+            "HSV", "BlackOWhite", "Basic", "OscillatingGrayscale", "Fire", "Pastel",
+            "Interpolated", "CyclicHSV", "FractalPattern", "PerlinNoise", "Water",
+            "Sunset", "DeepSpace", "Physchodelic", "IceCave", "ElectricNebula",
+            "AccretionDisk"};
+
+    // --- Common layout values ---
+    const float controlPadding = 10.f;
+    const float labelControlVPadding = 4.f;
+    const float controlGroupXOffsetMandelbrot = 10.f;
+    const float controlWidth = 200.f;
+    const float iterEditBoxWidth = 65.f;
+    const float iterSliderWidth = controlWidth - iterEditBoxWidth - controlPadding;
+    const tgui::Layout controlGroupXOffsetJulia = {"parent.width - " + std::to_string(controlWidth + controlPadding)};
+    const unsigned int minIterations = 50;
+    const unsigned int maxIterations = 10000;
+
+    // --- Mandelbrot Controls ---
+    sf::Vector2i initialMandelbrotRes = mandelbrotFractal.get_resolution();
+    float mandelbrotControlsStartY = static_cast<float>(initialMandelbrotRes.y) + controlPadding;
+
+    tgui::Label::Ptr mandelbrotLabel = tgui::Label::create("Mandelbrot Settings");
+    mandelbrotLabel->setPosition(controlGroupXOffsetMandelbrot, mandelbrotControlsStartY);
+    mandelbrotLabel->setTextSize(16);
+    gui.add(mandelbrotLabel);
+
+    tgui::ComboBox::Ptr paletteSelectorMandelbrot = tgui::ComboBox::create();
+    paletteSelectorMandelbrot->setPosition(controlGroupXOffsetMandelbrot, tgui::bindBottom(mandelbrotLabel) + controlPadding);
+    paletteSelectorMandelbrot->setSize({controlWidth, 24});
+    ComboBoxCreator(paletteSelectorMandelbrot, paletteNames, "HSV");
+    paletteSelectorMandelbrot->onItemSelect([&](const tgui::String& str) {
         mandelbrotFractal.setPallete(str.toStdString());
-        needsJuliaRender = true;
-        juliaFractal.setPallete(str.toStdString());
-        });
-    tgui::EditBox::Ptr resolution_picker = tgui::EditBox::create();
-    resolution_picker->setText("800x600");
-    resolution_picker->setPosition({ 810, 70 });
-    resolution_picker->setSize({100, 24});
-    resolution_picker->onTextChange([&](const tgui::String& str) {
-        std::string text = str.toStdString();
-        size_t x_pos = text.find('x');
-        if (x_pos != std::string::npos && x_pos > 1 && std::size(text) - x_pos > 1) {
-            std::string width_str = text.substr(0, x_pos);
-            std::string height_str = text.substr(x_pos + 1);
-            int width = std::stoi(width_str);
-            int height = std::stoi(height_str);
-            if(width < 200 || height < 200) return;
-            mandelbrotFractal.set_resolution({width, height});
-            juliaFractal.set_resolution({width, height});
+        needsMandelbrotRender = true;
+    });
+    gui.add(paletteSelectorMandelbrot);
+
+    tgui::Slider::Ptr paletteOffsetSliderMandelbrot = tgui::Slider::create();
+    paletteOffsetSliderMandelbrot->setMinimum(0);
+    paletteOffsetSliderMandelbrot->setMaximum(360);
+    paletteOffsetSliderMandelbrot->setValue(0);
+    paletteOffsetSliderMandelbrot->setPosition(controlGroupXOffsetMandelbrot, tgui::bindBottom(paletteSelectorMandelbrot) + controlPadding);
+    paletteOffsetSliderMandelbrot->setSize({controlWidth, 18});
+    paletteOffsetSliderMandelbrot->onValueChange([&](float pos) {
+        if (mandelbrotFractal.getPallete() == Palletes::HSV || mandelbrotFractal.getPallete() == Palletes::CyclicHSV) {
+            mandelbrotFractal.SetDegreesOffsetForHSV(static_cast<int>(pos));
             needsMandelbrotRender = true;
         }
     });
+    gui.add(paletteOffsetSliderMandelbrot);
+
+    tgui::EditBox::Ptr resolutionPickerMandelbrot = tgui::EditBox::create();
+    resolutionPickerMandelbrot->setText(std::to_string(initialMandelbrotRes.x) + "x" + std::to_string(initialMandelbrotRes.y));
+    resolutionPickerMandelbrot->setPosition(controlGroupXOffsetMandelbrot, tgui::bindBottom(paletteOffsetSliderMandelbrot) + controlPadding);
+    resolutionPickerMandelbrot->setSize({controlWidth, 24}); // Use full control width
+    resolutionPickerMandelbrot->onTextChange([&](const tgui::String& str) {
+        std::string text = str.toStdString();
+        size_t x_pos = text.find('x');
+        resolutionPickerMandelbrot->getRenderer()->setBorderColor(sf::Color::Black);
+        if (x_pos != std::string::npos && x_pos > 0 && text.length() > x_pos + 1) {
+            try {
+                std::string width_str = text.substr(0, x_pos);
+                std::string height_str = text.substr(x_pos + 1);
+                int width = std::stoi(width_str);
+                int height = std::stoi(height_str);
+                if(width >= 100 && height >= 100 && width <= 8192 && height <= 8192) {
+                    mandelbrotFractal.set_resolution({width, height});
+                    needsMandelbrotRender = true;
+                } else {
+                    resolutionPickerMandelbrot->getRenderer()->setBorderColor(sf::Color::Yellow);
+                }
+            } catch (const std::invalid_argument&) {
+                resolutionPickerMandelbrot->getRenderer()->setBorderColor(sf::Color::Red);
+            } catch (const std::out_of_range&) {
+                resolutionPickerMandelbrot->getRenderer()->setBorderColor(sf::Color::Red);
+            }
+        } else if (!text.empty()) {
+            resolutionPickerMandelbrot->getRenderer()->setBorderColor(sf::Color::Red);
+        }
+    });
+    gui.add(resolutionPickerMandelbrot);
+
+    // --- Max Iterations Control (Mandelbrot) ---
+    tgui::Label::Ptr maxIterLabelMandelbrot = tgui::Label::create("Max Iterations:");
+    maxIterLabelMandelbrot->setPosition(controlGroupXOffsetMandelbrot, tgui::bindBottom(resolutionPickerMandelbrot) + controlPadding * 1.5f); // Add a bit more space
+    gui.add(maxIterLabelMandelbrot);
+    unsigned int currentMandelbrotIters = std::max(minIterations, std::min(maxIterations, mandelbrotFractal.get_max_iters()));
+    mandelbrotFractal.set_max_iters(currentMandelbrotIters);
+
+    tgui::EditBox::Ptr maxIterEditBoxMandelbrot = tgui::EditBox::create();
+    maxIterEditBoxMandelbrot->setDefaultText(std::to_string(currentMandelbrotIters));
+    maxIterEditBoxMandelbrot->setText(std::to_string(currentMandelbrotIters));
+    maxIterEditBoxMandelbrot->setPosition(controlGroupXOffsetMandelbrot, tgui::bindBottom(maxIterLabelMandelbrot) + labelControlVPadding);
+    maxIterEditBoxMandelbrot->setSize({iterEditBoxWidth, 24});
+    maxIterEditBoxMandelbrot->setInputValidator(tgui::EditBox::Validator::UInt);
+    gui.add(maxIterEditBoxMandelbrot);
+
+    tgui::Slider::Ptr maxIterSliderMandelbrot = tgui::Slider::create();
+    maxIterSliderMandelbrot->setMinimum(static_cast<float>(minIterations));
+    maxIterSliderMandelbrot->setMaximum(static_cast<float>(maxIterations));
+    maxIterSliderMandelbrot->setValue(static_cast<float>(currentMandelbrotIters));
+    maxIterSliderMandelbrot->setPosition(tgui::bindRight(maxIterEditBoxMandelbrot) + controlPadding, tgui::bindTop(maxIterEditBoxMandelbrot) + (tgui::bindHeight(maxIterEditBoxMandelbrot) - tgui::bindHeight(maxIterSliderMandelbrot)) / 2.f);
+    maxIterSliderMandelbrot->setSize({iterSliderWidth, 18});
+    gui.add(maxIterSliderMandelbrot);
+
+    maxIterSliderMandelbrot->onValueChange([&, maxIterEditBoxMandelbrot](float value) {
+        unsigned int intValue = static_cast<unsigned int>(value);
+        intValue = std::max(minIterations, std::min(maxIterations, intValue));
+        mandelbrotFractal.set_max_iters(intValue);
+        if (maxIterEditBoxMandelbrot) {
+            maxIterEditBoxMandelbrot->setText(std::to_string(intValue));
+            maxIterEditBoxMandelbrot->getRenderer()->setBorderColor("black");
+        }
+        needsMandelbrotRender = true;
+    });
+
+    auto updateMandelbrotIterationsFromEditBox = [&, maxIterSliderMandelbrot, maxIterEditBoxMandelbrot]() {
+        unsigned int currentValue = mandelbrotFractal.get_max_iters();
+        try {
+            if (maxIterEditBoxMandelbrot && !maxIterEditBoxMandelbrot->getText().empty()) {
+                long long parsedValue = std::stoll(maxIterEditBoxMandelbrot->getText().toStdString());
+                if (parsedValue >= minIterations && parsedValue <= maxIterations) {
+                    currentValue = static_cast<unsigned int>(parsedValue);
+                    mandelbrotFractal.set_max_iters(currentValue);
+                    if(maxIterSliderMandelbrot) {
+                        maxIterSliderMandelbrot->setValue(static_cast<float>(currentValue));
+                    }
+                    maxIterEditBoxMandelbrot->getRenderer()->setBorderColor("black");
+                    needsMandelbrotRender = true;
+                } else {
+                    currentValue = mandelbrotFractal.get_max_iters();
+                    maxIterEditBoxMandelbrot->setText(std::to_string(currentValue));
+                    if(maxIterSliderMandelbrot) { maxIterSliderMandelbrot->setValue(static_cast<float>(currentValue)); } // Also reset slider
+                    maxIterEditBoxMandelbrot->getRenderer()->setBorderColor("orange");
+                }
+            } else if (maxIterEditBoxMandelbrot) {
+                currentValue = mandelbrotFractal.get_max_iters();
+                maxIterEditBoxMandelbrot->setText(std::to_string(currentValue));
+                if(maxIterSliderMandelbrot) { maxIterSliderMandelbrot->setValue(static_cast<float>(currentValue)); }
+                maxIterEditBoxMandelbrot->getRenderer()->setBorderColor("black");
+            }
+        } catch (const std::invalid_argument&) {
+            if (maxIterEditBoxMandelbrot) {
+                currentValue = mandelbrotFractal.get_max_iters();
+                maxIterEditBoxMandelbrot->setText(std::to_string(currentValue));
+                if(maxIterSliderMandelbrot) { maxIterSliderMandelbrot->setValue(static_cast<float>(currentValue)); }
+                maxIterEditBoxMandelbrot->getRenderer()->setBorderColor("red");
+            }
+        } catch (const std::out_of_range&) {
+            if (maxIterEditBoxMandelbrot) {
+                currentValue = mandelbrotFractal.get_max_iters();
+                maxIterEditBoxMandelbrot->setText(std::to_string(currentValue));
+                if(maxIterSliderMandelbrot) { maxIterSliderMandelbrot->setValue(static_cast<float>(currentValue)); }
+                maxIterEditBoxMandelbrot->getRenderer()->setBorderColor("red");
+            }
+        }
+    };
+    maxIterEditBoxMandelbrot->onReturnOrUnfocus(updateMandelbrotIterationsFromEditBox);
+
+    tgui::Button::Ptr ResetMandelbrot = tgui::Button::create("Reset Mandelbrot");
+    ResetMandelbrot->setPosition(controlGroupXOffsetMandelbrot, tgui::bindBottom(maxIterEditBoxMandelbrot) + controlPadding);
+    ResetMandelbrot->setSize({controlWidth, 24});
+    ResetMandelbrot->onPress([&]() {
+        mandelbrotFractal.reset();
+        needsMandelbrotRender = true;
+    });
+    gui.add(ResetMandelbrot);
+
+    // --- Julia Controls ---
+
+    sf::Vector2i initialJuliaRes = juliaFractal.get_resolution();
+    float juliaControlsStartY = static_cast<float>(initialJuliaRes.y) + controlPadding;
+
+    tgui::Label::Ptr juliaLabel = tgui::Label::create("Julia Settings");
+    juliaLabel->setPosition(controlGroupXOffsetJulia, juliaControlsStartY);
+    juliaLabel->setTextSize(16);
+    gui.add(juliaLabel);
+
+    tgui::ComboBox::Ptr paletteSelectorJulia = tgui::ComboBox::create();
+    paletteSelectorJulia->setPosition(controlGroupXOffsetJulia, tgui::bindBottom(juliaLabel) + controlPadding);
+    paletteSelectorJulia->setSize({controlWidth, 24});
+    ComboBoxCreator(paletteSelectorJulia, paletteNames, "HSV");
+    paletteSelectorJulia->onItemSelect([&](const tgui::String& str) {
+        juliaFractal.setPallete(str.toStdString());
+        needsJuliaRender = true;
+    });
+    gui.add(paletteSelectorJulia);
+
+    tgui::Slider::Ptr paletteOffsetSliderJulia = tgui::Slider::create();
+    paletteOffsetSliderJulia->setMinimum(0);
+    paletteOffsetSliderJulia->setMaximum(360);
+    paletteOffsetSliderJulia->setValue(0);
+    paletteOffsetSliderJulia->setPosition(controlGroupXOffsetJulia, tgui::bindBottom(paletteSelectorJulia) + controlPadding);
+    paletteOffsetSliderJulia->setSize({controlWidth, 18});
+    paletteOffsetSliderJulia->onValueChange([&](float pos) {
+        if (juliaFractal.getPallete() == Palletes::HSV || juliaFractal.getPallete() == Palletes::CyclicHSV) {
+            juliaFractal.SetDegreesOffsetForHSV(static_cast<int>(pos));
+            needsJuliaRender = true;
+        }
+    });
+    gui.add(paletteOffsetSliderJulia);
 
 
-    gui.add(paletteSelector);
-    gui.add(paletteOffsetSlider);
-    gui.add(resolution_picker);
+    tgui::EditBox::Ptr resolutionPickerJulia = tgui::EditBox::create();
+    resolutionPickerJulia->setText(std::to_string(initialJuliaRes.x) + "x" + std::to_string(initialJuliaRes.y));
+    resolutionPickerJulia->setPosition(controlGroupXOffsetJulia, tgui::bindBottom(paletteOffsetSliderJulia) + controlPadding);
+    resolutionPickerJulia->setSize({controlWidth, 24});
+    resolutionPickerJulia->onTextChange([&](const tgui::String& str) {
+        std::string text = str.toStdString();
+        size_t x_pos = text.find('x');
+        resolutionPickerJulia->getRenderer()->setBorderColor(sf::Color::Black);
+        if (x_pos != std::string::npos && x_pos > 0 && text.length() > x_pos + 1) {
+            try {
+                std::string width_str = text.substr(0, x_pos);
+                std::string height_str = text.substr(x_pos + 1);
+                int width = std::stoi(width_str);
+                int height = std::stoi(height_str);
+                if(width >= 100 && height >= 100 && width <= 8192 && height <= 8192) {
+                    juliaFractal.set_resolution({width, height});
+                    needsJuliaRender = true;
+                } else {
+                    resolutionPickerJulia->getRenderer()->setBorderColor(sf::Color::Yellow);
+                }
+            } catch (const std::invalid_argument&) {
+                resolutionPickerJulia->getRenderer()->setBorderColor(sf::Color::Red);
+            } catch (const std::out_of_range&) {
+                resolutionPickerJulia->getRenderer()->setBorderColor(sf::Color::Red);
+            }
+        } else if (!text.empty()) {
+            resolutionPickerJulia->getRenderer()->setBorderColor(sf::Color::Red);
+        }
+    });
+    gui.add(resolutionPickerJulia);
 
+    // --- Max Iterations Control (Julia) ---
+    tgui::Label::Ptr maxIterLabelJulia = tgui::Label::create("Max Iterations:");
+    maxIterLabelJulia->setPosition(controlGroupXOffsetJulia, tgui::bindBottom(resolutionPickerJulia) + controlPadding * 1.5f);
+    gui.add(maxIterLabelJulia);
+    unsigned int currentJuliaIters = std::max(minIterations, std::min(maxIterations, juliaFractal.get_max_iters()));
+    juliaFractal.set_max_iters(currentJuliaIters);
+
+    tgui::EditBox::Ptr maxIterEditBoxJulia = tgui::EditBox::create();
+    maxIterEditBoxJulia->setDefaultText(std::to_string(currentJuliaIters));
+    maxIterEditBoxJulia->setText(std::to_string(currentJuliaIters));
+    maxIterEditBoxJulia->setPosition(controlGroupXOffsetJulia, tgui::bindBottom(maxIterLabelJulia) + labelControlVPadding);
+    maxIterEditBoxJulia->setSize({iterEditBoxWidth, 24});
+    maxIterEditBoxJulia->setInputValidator(tgui::EditBox::Validator::UInt);
+    gui.add(maxIterEditBoxJulia);
+
+    tgui::Slider::Ptr maxIterSliderJulia = tgui::Slider::create();
+    maxIterSliderJulia->setMinimum(static_cast<float>(minIterations));
+    maxIterSliderJulia->setMaximum(static_cast<float>(maxIterations));
+    maxIterSliderJulia->setValue(static_cast<float>(currentJuliaIters));
+    maxIterSliderJulia->setPosition(tgui::bindRight(maxIterEditBoxJulia) + controlPadding, tgui::bindTop(maxIterEditBoxJulia) + (tgui::bindHeight(maxIterEditBoxJulia) - tgui::bindHeight(maxIterSliderJulia)) / 2.f);
+    maxIterSliderJulia->setSize({iterSliderWidth, 18});
+    gui.add(maxIterSliderJulia);
+
+    maxIterSliderJulia->onValueChange([&, maxIterEditBoxJulia](float value) { // Capture edit box pointer
+        unsigned int intValue = static_cast<unsigned int>(value);
+        intValue = std::max(minIterations, std::min(maxIterations, intValue)); // Clamp
+        juliaFractal.set_max_iters(intValue);
+        if (maxIterEditBoxJulia) {
+            maxIterEditBoxJulia->setText(std::to_string(intValue));
+            maxIterEditBoxJulia->getRenderer()->setBorderColor("black");
+        }
+        needsJuliaRender = true;
+    });
+
+    auto updateJuliaIterationsFromEditBox = [&, maxIterSliderJulia, maxIterEditBoxJulia]() {
+        unsigned int currentValue = juliaFractal.get_max_iters();
+        try {
+            if (maxIterEditBoxJulia && !maxIterEditBoxJulia->getText().empty()) {
+                long long parsedValue = std::stoll(maxIterEditBoxJulia->getText().toStdString());
+                if (parsedValue >= minIterations && parsedValue <= maxIterations) {
+                    currentValue = static_cast<unsigned int>(parsedValue);
+                    juliaFractal.set_max_iters(currentValue);
+                    if(maxIterSliderJulia) {
+                        maxIterSliderJulia->setValue(static_cast<float>(currentValue));
+                    }
+                    maxIterEditBoxJulia->getRenderer()->setBorderColor("black");
+                    needsJuliaRender = true;
+                } else {
+                    currentValue = juliaFractal.get_max_iters();
+                    maxIterEditBoxJulia->setText(std::to_string(currentValue));
+                    if(maxIterSliderJulia) { maxIterSliderJulia->setValue(static_cast<float>(currentValue)); }
+                    maxIterEditBoxJulia->getRenderer()->setBorderColor("orange");
+                }
+            } else if (maxIterEditBoxJulia) {
+                currentValue = juliaFractal.get_max_iters();
+                maxIterEditBoxJulia->setText(std::to_string(currentValue));
+                if(maxIterSliderJulia) { maxIterSliderJulia->setValue(static_cast<float>(currentValue)); }
+                maxIterEditBoxJulia->getRenderer()->setBorderColor("black");
+            }
+        } catch (const std::invalid_argument&) {
+            if (maxIterEditBoxJulia) {
+                currentValue = juliaFractal.get_max_iters();
+                maxIterEditBoxJulia->setText(std::to_string(currentValue));
+                if(maxIterSliderJulia) { maxIterSliderJulia->setValue(static_cast<float>(currentValue)); }
+                maxIterEditBoxJulia->getRenderer()->setBorderColor("red");
+            }
+        } catch (const std::out_of_range&) {
+            if (maxIterEditBoxJulia) {
+                currentValue = juliaFractal.get_max_iters();
+                maxIterEditBoxJulia->setText(std::to_string(currentValue));
+                if(maxIterSliderJulia) { maxIterSliderJulia->setValue(static_cast<float>(currentValue)); }
+                maxIterEditBoxJulia->getRenderer()->setBorderColor("red");
+            }
+        }
+    };
+    maxIterEditBoxJulia->onReturnOrUnfocus(updateJuliaIterationsFromEditBox);
+
+    tgui::Button::Ptr ResetJulia = tgui::Button::create("Reset Julia");
+    ResetJulia->setPosition(controlGroupXOffsetJulia, tgui::bindBottom(maxIterEditBoxJulia) + controlPadding);
+    ResetJulia->setSize({controlWidth, 24});
+    ResetJulia->onPress([&]() {
+        juliaFractal.reset();
+        needsJuliaRender = true;
+    });
+    gui.add(ResetJulia);
     /*
      * The main application loop continues as long as the window is open.
      * It handles events, updates state, determines rendering needs, performs rendering,
      * and draws the final frame.
      */
-    mandelbrotFractal.set_resolution({1200, 800});
 
     while (window.isOpen()) {
         /*
@@ -318,7 +584,11 @@ void main_thread() {
                         }
                         break;
                     }
-                    default:
+                    case sf::Keyboard::Scancode::F11:
+                        const sf::Vector2i fullScreenResolution = {2560, 1440};
+                        mandelbrotFractal.set_resolution({int(fullScreenResolution.x * mandelbrotFractal.get_resolution().x / window.getSize().x), int(fullScreenResolution.y * mandelbrotFractal.get_resolution().y / window.getSize().y)});
+                        juliaFractal.set_resolution({int(fullScreenResolution.x * juliaFractal.get_resolution().x / window.getSize().x), int(fullScreenResolution.y * juliaFractal.get_resolution().y / window.getSize().y)});
+                        window.setSize({(unsigned int)(fullScreenResolution.x), (unsigned int)(fullScreenResolution.y)});
                         break;
                 }
             }
@@ -338,7 +608,7 @@ void main_thread() {
                 else if (isInJuliaArea) {
                     isZoomingJulia = true;
                     currentJuliaQuality = RenderQuality::good;
-                    juliaFractal.handleZoom(delta, {mousePosition.x - 1920 + 800, mousePosition.y});
+                    juliaFractal.handleZoom(delta, {int(mousePosition.x - windowSize.x + 800), mousePosition.y});
                     needsJuliaRender = true;
                 }
             }
@@ -516,7 +786,6 @@ void main_thread() {
                   * or could be a potential area for review.
                   */
                  juliaFractal.update_timelapse();
-                 juliaFractal.update_timelapse();
             } else {
                  juliaFractal.render(currentJuliaQuality, juliaSeedReal, juliaSeedImag);
             }
@@ -527,7 +796,7 @@ void main_thread() {
          * Drawing phase: Clears buffers, draws fractals to the render target,
          * draws the render target to the window, then draws UI elements (text, TGUI) on top.
          */
-        window.clear();
+        window.clear(sf::Color::Red);
         renderTarget.clear();
 
         renderTarget.draw(mandelbrotFractal);

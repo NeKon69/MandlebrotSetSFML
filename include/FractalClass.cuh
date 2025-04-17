@@ -169,6 +169,8 @@ public:
 
     void post_processing();
 
+    void reset();
+
     /**
      * @brief CUDA kernel function to calculate and render the fractal given template.
      * This kernel is executed in parallel by multiple threads on the GPU.
