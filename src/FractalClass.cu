@@ -311,7 +311,8 @@ void FractalBase<Derived>::post_processing() {
         // ToDo implement a more complex solution for checking if the kernel is finished and not just blindly synchronizing
         // the problem with current implementation is that it will wait for the kernel to finish (copying, other stuff, you know the point, basically sync the stream) even if you dont need to
         // that situation may occur if you have good enough gpu, and you don't have that bad of frame delay  ( < 5)
-        if ((status != cudaSuccess && hardness_coeff > 0) || zoom_x > 1e7 || zoom_y > 1e7) {
+        if ((status != cudaSuccess && hardness_coeff > 0) || zoom_x > 1e7 || zoom_y > 1e7)
+        {
             cudaStreamSynchronize(stream);
         }
         image = sf::Image({ basic_width, basic_height }, pixels);

@@ -478,12 +478,10 @@ void main_thread() {
                     mouseMovedInMandelbrotArea = true;
                     if (showMandelbrotIterationLines) {
                         mandelbrotFractal.drawIterationLines(mousePosition);
-                        needsMandelbrotRender = true;
                     }
                     if (mandelbrotFractal.get_is_dragging()) {
                         currentMandelbrotQuality = RenderQuality::good;
                         mandelbrotFractal.dragging(mousePosition);
-                        needsMandelbrotRender = true;
                     }
                 }
                 else if (isInJuliaArea) {
@@ -603,7 +601,6 @@ void main_thread() {
                     isZoomingMandelbrot = true;
                     currentMandelbrotQuality = RenderQuality::good;
                     mandelbrotFractal.handleZoom(delta, mousePosition);
-                    needsMandelbrotRender = true;
                 }
                 else if (isInJuliaArea) {
                     isZoomingJulia = true;
@@ -641,22 +638,17 @@ void main_thread() {
                 if (mouseButtonReleasedEvent->button == sf::Mouse::Button::Left) {
                     if (isLeftMouseDownMandelbrot) {
                         isLeftMouseDownMandelbrot = false;
-                        currentMandelbrotQuality = RenderQuality::best;
                         mandelbrotFractal.stop_dragging();
-                        needsMandelbrotRender = true;
                     }
                     if (isLeftMouseDownJulia) {
                         isLeftMouseDownJulia = false;
-                        currentJuliaQuality = RenderQuality::best;
                         juliaFractal.stop_dragging();
-                        needsJuliaRender = true;
                     }
                 }
                 else if (mouseButtonReleasedEvent->button == sf::Mouse::Button::Right) {
                      bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < 800 && mousePosition.y >= 0 && mousePosition.y < 600;
                      if (isInMandelbrotArea) {
                          showMandelbrotIterationLines = false;
-                         needsMandelbrotRender = true;
                      }
                 }
             }
@@ -689,7 +681,7 @@ void main_thread() {
 
         if (needsMandelbrotRender) {
             renderMandelbrotThisFrame = true;
-            qualityForMandelbrotRender = (currentMandelbrotQuality == RenderQuality::best) ? RenderQuality::best : RenderQuality::good;
+            qualityForMandelbrotRender = qualityForMandelbrotRender == RenderQuality::good ? RenderQuality::good : RenderQuality::best;
         }
         if (isInteractingMandelbrotThisFrame) {
             renderMandelbrotThisFrame = true;
@@ -697,8 +689,8 @@ void main_thread() {
         }
         else if (!renderMandelbrotThisFrame) {
             const float IDLE_TIME_THRESHOLD_MS = 500.0f;
-            bool needsQualityImprovement = mandelbrotIdleTimeMs > IDLE_TIME_THRESHOLD_MS;
-            if (needsQualityImprovement && (currentMandelbrotQuality != RenderQuality::best || previousMandelbrotQuality != RenderQuality::best)) {
+            bool needsQualityImprovement = mandelbrotIdleTimeMs > IDLE_TIME_THRESHOLD_MS / 10;
+            if (needsQualityImprovement && currentMandelbrotQuality != RenderQuality::best && previousMandelbrotQuality != RenderQuality::best){
                 renderMandelbrotThisFrame = true;
                 qualityForMandelbrotRender = RenderQuality::best;
             }
@@ -713,7 +705,6 @@ void main_thread() {
             mandelbrotRenderClock.restart();
             mandelbrotFractal.render(currentMandelbrotQuality);
         }
-
         /*
          * Julia rendering decision logic:
          * Similar to Mandelbrot, but also considers timelapse mode ('isTimelapseActive')
@@ -780,11 +771,6 @@ void main_thread() {
 
             juliaRenderClock.restart();
             if (isTimelapseActive) {
-                 /*
-                  * Updates Julia parameters based on the timelapse logic.
-                  * Calling it twice might be intentional to advance the animation faster
-                  * or could be a potential area for review.
-                  */
                  juliaFractal.update_timelapse();
             } else {
                  juliaFractal.render(currentJuliaQuality, juliaSeedReal, juliaSeedImag);
