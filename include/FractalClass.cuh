@@ -6,6 +6,7 @@
 #include <TGUI/Backend/SFML-Graphics.hpp>
 #include <cuda_runtime.h>
 #include <random>
+#include <thread>
 
 namespace fractals {
 	struct mandelbrot{};
@@ -49,6 +50,10 @@ struct timelapse_propertier {
 template <typename Derived>
 class FractalBase : public sf::Transformable, public sf::Drawable {
 protected:
+    // THE MOST IMPORTANT VALUE
+    bool isCudaAvailable = false;
+
+
     // Fractal properties
     unsigned int max_iterations;
     double basic_zoom_x;
@@ -154,7 +159,7 @@ public:
     void setMaxComputation(float Gflops);
     void setPallete(std::string name);
     Palletes getPallete();
-    sf::Vector2i get_resolution();
+    sf::Vector2i get_resolution() const;
 
     void SetDegreesOffsetForHSV(int degrees);
     sf::Texture getTexture();

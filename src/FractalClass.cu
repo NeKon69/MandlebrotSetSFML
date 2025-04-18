@@ -4,7 +4,6 @@
 #include <iostream>
 #include <thread>
 #include <random>
-#include <math.h>
 
 sf::Image stretchImageNearestNeighbor(const sf::Image& source, unsigned int targetWidth, unsigned int targetHeight) {
     sf::Image result({ targetWidth, targetHeight }, sf::Color::Black);
@@ -28,23 +27,24 @@ template <typename Derived>
 FractalBase<Derived>::FractalBase()
     : max_iterations(300), basic_zoom_x(240.0), basic_zoom_y(240.0),
     zoom_x(basic_zoom_x), zoom_y(basic_zoom_y),
-    x_offset(3.0), y_offset(1.85),
+    x_offset(2.25), y_offset(1.25),
     zoom_factor(1.0), zoom_speed(0.1),
     zoom_scale(1.0), width(800), height(600), basic_width(800), basic_height(600),
     maxComputation(50.f), sprite(texture), iterationline(sf::PrimitiveType::LineStrip),
     gen(rd()), disX(-2.f, 2.f), disY(-1.5f, 1.5f) ,disVelX(-0.13f, 0.13f),
     disVelY(-0.1f, 0.1f)
 {
-    if (std::is_same<Derived, fractals::julia>::value) {
-        x_offset = 2.5;
-        //y_offset = 1.25;
-        palette = createHSVPalette(20000);
-        paletteSize = 20000;
+    isCudaAvailable = true;
+    int* numDevices;
+    cuDeviceGetCount(numDevices);
+    if(*numDevices == 0) {
+        std::cout << "IMPORTANT NO AVAILABLE CUDA DEVICES FOUND" << std::endl;
+        std::cout << "Forcing to use CPU rendering" << std::endl;
+        std::cout << "Please make sure you have CUDA installed and your GPU supports it" << std::endl;
+        isCudaAvailable = false;
     }
-    else {
-		palette = createHSVPalette(20000);
-        paletteSize = 20000;
-    }
+    palette = createHSVPalette(20000);
+    paletteSize = 20000;
 
     cudaHostAlloc(&h_doubleCancelFlag, sizeof(int), 0);
     *h_doubleCancelFlag = 0;
@@ -242,7 +242,7 @@ template <typename Derived>
 Palletes FractalBase<Derived>::getPallete() { return curr_pallete; }
 
 template <typename Derived>
-sf::Vector2i FractalBase<Derived>::get_resolution() { return {int(basic_width), int(basic_height)}; }
+sf::Vector2i FractalBase<Derived>::get_resolution() const { return {int(basic_width), int(basic_height)}; }
 
 template <typename Derived>
 void FractalBase<Derived>::SetDegreesOffsetForHSV(int degrees) { degrees_offsetForHSV = degrees; setPallete("HSV"); }
@@ -324,7 +324,7 @@ void FractalBase<Derived>::post_processing() {
 
 // To surely not forget anything lets make sure to delete everything and reallocate
 template <typename Derived>
-void FractalBase<Derived>::reset(){
+void FractalBase<Derived>::reset() {
     cudaFree(d_pixels);
     cudaFree(d_palette);
     cudaFree(stopFlagDevice);
@@ -414,6 +414,9 @@ void FractalBase<Derived>::reset(){
 
 template <>
 void FractalBase<fractals::mandelbrot>::render(render_state quality) {
+    if (!isCudaAvailable) {
+        return;
+    }
     cudaEvent_t event;
     cudaEventCreate(&event);
 
@@ -499,6 +502,9 @@ void FractalBase<fractals::julia>::render(
     render_state quality,
     double zx, double zy
 ) {
+    if (!isCudaAvailable) {
+        return;
+    }
     cudaEvent_t event;
     cudaEventCreate(&event);
 
@@ -653,9 +659,9 @@ void FractalBase<fractals::julia>::drawIterationLines(sf::Vector2i mouse_pos) {
 
 template <typename Derived>
 void FractalBase<Derived>::draw(sf::RenderTarget& target, sf::RenderStates states) const {
-    states.transform *= getTransform();
-    target.draw(sprite, states);
-    target.draw(iterationline, 0, drawen_iterations, states);
+     states.transform *= getTransform();
+     target.draw(sprite, states);
+     target.draw(iterationline, 0, drawen_iterations, states);
 }
 template <typename Derived>
 
