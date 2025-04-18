@@ -86,3 +86,90 @@ __global__ void fractal_rendering(
 	}
 
 }
+
+
+__global__ void fractal_rendering(
+        unsigned char* pixels, size_t size_of_pixels, int width, int height,
+        double zoom_x, double zoom_y, double x_offset, double y_offset,
+        sf::Color* d_palette, int paletteSize, double maxIterations, unsigned int* d_total_iterations,
+        double cReal, double cImaginary) {
+
+    __shared__ unsigned int total_iterations[1024];
+
+    maxIterations = double(maxIterations);
+
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    int id = threadIdx.y * blockDim.x + threadIdx.x;
+
+    if (x == 0 && y == 0) {
+        *d_total_iterations = 0;
+    }
+
+
+    size_t expected_size = width * height * 4;
+
+    float scale_factor = (float)size_of_pixels / expected_size;
+
+
+
+    if (x < width && y < height) {
+        double real = cReal;
+        double imag = cImaginary;
+        double new_real, new_imag;
+        double z_real = x / zoom_x - x_offset;;
+        double z_imag = y / zoom_y - y_offset;
+        double current_iteration = 0;
+        double z_comp = z_real * z_real + z_imag * z_imag;
+
+        while (z_comp < 4 && current_iteration < maxIterations) {
+            new_real = (z_real * z_real - z_imag * z_imag) + real;
+            z_imag = 2 * z_real * z_imag + imag;
+            z_real = new_real;
+            z_comp = z_real * z_real + z_imag * z_imag;
+            current_iteration++;
+        }
+
+
+        total_iterations[id] = static_cast<unsigned int>(current_iteration);
+        __syncthreads();
+
+        for (unsigned int s = blockDim.x * blockDim.y / 2; s > 0; s >>= 1) {
+            if (id < s) {
+                total_iterations[id] += total_iterations[id + s];
+            }
+            __syncthreads();
+        }
+
+        if (id == 0) {
+            atomicAdd(d_total_iterations, total_iterations[0]);
+        }
+
+        unsigned char r, g, b;
+        if (current_iteration == maxIterations) {
+            r = g = b = 0;
+        }
+
+        else {
+            current_iteration = current_iteration + 1 - log2(log2(abs(sqrt(z_real * z_real + z_imag * z_imag))));
+            // Calculate gradient value
+            float gradient = Gradient(current_iteration, maxIterations);
+            // Map gradient to palette index
+            int index = static_cast<int>(gradient * (paletteSize - 1));
+            sf::Color color = getPaletteColor(index, paletteSize, d_palette);
+            r = color.r;
+            g = color.g;
+            b = color.b;
+        }
+
+        int base_index = (y * width + x) * 4;
+        for (int i = 0; i < scale_factor * 4; i += 4) {
+            int index = base_index + i;
+            pixels[index] = r;
+            pixels[index + 1] = g;
+            pixels[index + 2] = b;
+            pixels[index + 3] = 255;
+        }
+    }
+
+}
