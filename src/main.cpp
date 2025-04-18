@@ -81,11 +81,14 @@ void main_thread() {
     bool isLeftMouseDownJulia = false;
     bool isTimelapseActive = false;
     bool blockJuliaParameterUpdate = false;
+    bool progressiveAnimation = false;
 
     bool isZoomingMandelbrot = false;
     bool mouseMovedInMandelbrotArea = true;
     bool isZoomingJulia = false;
     bool mouseMovedInJuliaArea = false;
+
+
 
     /*
      * Clocks for timing different operations: FPS updates, render times (though not explicitly displayed),
@@ -142,6 +145,9 @@ void main_thread() {
     const tgui::Layout controlGroupXOffsetJulia = {"parent.width - " + std::to_string(controlWidth + controlPadding)};
     const unsigned int minIterations = 50;
     const unsigned int maxIterations = 10000;
+    constexpr unsigned int DELIMETER_FOR_ITERATION_UPDATE = 200;
+    constexpr unsigned int UPDATE_FRAMES_OF_ANIMATION = 60;
+    sf::Clock timer_update_iteration;
 
     // --- Mandelbrot Controls ---
     sf::Vector2i initialMandelbrotRes = mandelbrotFractal.get_resolution();
@@ -444,6 +450,19 @@ void main_thread() {
         needsJuliaRender = true;
     });
     gui.add(ResetJulia);
+
+    tgui::ToggleButton::Ptr UpdateIterationsJulia = tgui::ToggleButton::create("Start Cool Animation");
+    unsigned int startingIterations = 300;
+    UpdateIterationsJulia->setPosition(controlGroupXOffsetJulia, tgui::bindBottom(ResetJulia) + controlPadding);
+    UpdateIterationsJulia->setSize({controlWidth, 24});
+    UpdateIterationsJulia->onToggle([&](){
+        if(progressiveAnimation)
+            juliaFractal.set_max_iters(startingIterations);
+        else
+            startingIterations = juliaFractal.get_max_iters();
+        progressiveAnimation = !progressiveAnimation;
+    });
+    gui.add(UpdateIterationsJulia);
     /*
      * The main application loop continues as long as the window is open.
      * It handles events, updates state, determines rendering needs, performs rendering,
@@ -681,7 +700,7 @@ void main_thread() {
 
         if (needsMandelbrotRender) {
             renderMandelbrotThisFrame = true;
-            qualityForMandelbrotRender = qualityForMandelbrotRender == RenderQuality::good ? RenderQuality::good : RenderQuality::best;
+            qualityForMandelbrotRender = RenderQuality::good;
         }
         if (isInteractingMandelbrotThisFrame) {
             renderMandelbrotThisFrame = true;
@@ -731,6 +750,15 @@ void main_thread() {
         if (isTimelapseActive) {
              renderJuliaThisFrame = true;
              qualityForJuliaRender = RenderQuality::good;
+        }
+        else if (progressiveAnimation){
+            renderJuliaThisFrame = true;
+            if (timer_update_iteration.getElapsedTime().asMilliseconds() > 1000 / UPDATE_FRAMES_OF_ANIMATION) {
+                timer_update_iteration.restart();
+                unsigned int curr_iters = juliaFractal.get_max_iters();
+                juliaFractal.set_max_iters(curr_iters + curr_iters / DELIMETER_FOR_ITERATION_UPDATE);
+            }
+
         }
         else if (mouseMovedInMandelbrotArea && !blockJuliaParameterUpdate && isMouseInMandelbrotUpdateArea)
         {

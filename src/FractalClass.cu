@@ -133,7 +133,7 @@ template <typename Derived>
 void FractalBase<Derived>::setMaxComputation(float Gflops) { maxComputation = 50.0f / 90 * Gflops; }
 
 template <typename Derived>
-void FractalBase<Derived>::setPallete(std::string name) { 
+void FractalBase<Derived>::setPallete(std::string name) {
     if (name == "HSV") {
 		palette = createHSVPalette(20000, degrees_offsetForHSV);
 		paletteSize = 20000;
@@ -297,14 +297,14 @@ void FractalBase<Derived>::post_processing() {
         auto start = std::chrono::high_resolution_clock::now();
         ANTIALIASING_SSAA4<<<dimGrid, dimBlock, 0, stream>>>(d_pixels, ssaa_buffer, basic_width * 2, basic_height * 2, basic_width, basic_height);
         auto end = std::chrono::high_resolution_clock::now();
-        cudaMemcpyAsync(compressed, ssaa_buffer, width * height * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost, stream);
+        cudaMemcpyAsync(compressed, ssaa_buffer, width * height * 4 * sizeof(std::uint8_t), cudaMemcpyDeviceToHost, stream);
 
         cudaStreamSynchronize(stream);
         image = sf::Image({ basic_width, basic_height }, compressed);
     }
     else {
         cudaEventRecord(stop_rendering, stream);
-        cudaMemcpyAsync(pixels, d_pixels, width * height * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost, stream);
+        cudaMemcpyAsync(pixels, d_pixels, width * height * 4 * sizeof(std::uint8_t), cudaMemcpyDeviceToHost, stream);
         cudaMemcpyAsync(h_total_iterations, d_total_iterations, sizeof(int), cudaMemcpyDeviceToHost, dataStream);
         cudaError_t status = cudaEventQuery(stop_rendering);
         hardness_coeff = *h_total_iterations / (width * height * 1.0);
@@ -541,11 +541,31 @@ void FractalBase<fractals::julia>::render(
 
     size_t len = width * height * 4;
     cudaEventRecord(start_rendering, stream);
-    fractal_rendering<<<dimGrid, dimBlock, 0, stream>>>(
-        d_pixels, len, width, height, float(render_zoom_x), float(render_zoom_y),
-        float(x_offset), float(y_offset), d_palette, paletteSize,
-        float(max_iterations), d_total_iterations, zx, zy
+    if (render_zoom_x > 1e7) {
+        dimBlock = dim3(10, 10);
+        dimGrid = dim3(
+                (width + dimBlock.x - 1) / dimBlock.x,
+                (height + dimBlock.y - 1) / dimBlock.y
         );
+        fractal_rendering<<<dimGrid, dimBlock, 0, stream>>>(
+                d_pixels, len, width, height, render_zoom_x, render_zoom_y,
+                x_offset, y_offset, d_palette, paletteSize,
+                max_iterations, d_total_iterations, zx, zy
+        );
+    }
+    else {
+        dimBlock = dim3(32, 32);
+        dimGrid = dim3(
+                (width + dimBlock.x - 1) / dimBlock.x,
+                (height + dimBlock.y - 1) / dimBlock.y
+        );
+
+        fractal_rendering<<<dimGrid, dimBlock, 0, stream>>>(
+                d_pixels, len, width, height, float(render_zoom_x), float(render_zoom_y),
+                float(x_offset), float(y_offset), d_palette, paletteSize,
+                float(max_iterations), d_total_iterations, float(zx), float(zy)
+        );
+    }
 
     cudaError_t err = cudaGetLastError();
     while (err != cudaSuccess) {
@@ -556,7 +576,7 @@ void FractalBase<fractals::julia>::render(
         fractal_rendering<<<dimGrid, dimBlock, 0, stream>>>(
             d_pixels, len, width, height, float(render_zoom_x), float(render_zoom_y),
             float(x_offset), float(y_offset), d_palette, paletteSize,
-            float(max_iterations), d_total_iterations, zx, zy
+            float(max_iterations), d_total_iterations, float(zx), float(zy)
             );
         err = cudaGetLastError();
         if (dimBlock.x < 2) {
