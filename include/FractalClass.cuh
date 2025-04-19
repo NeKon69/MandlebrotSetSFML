@@ -7,6 +7,7 @@
 #include <cuda_runtime.h>
 #include <random>
 #include <thread>
+#include <atomic>
 
 namespace fractals {
 	struct mandelbrot{};
@@ -57,6 +58,14 @@ struct render_target {
     unsigned int y_end;
 };
 
+struct RenderGuard {
+    std::atomic<bool>& flag;
+    RenderGuard(std::atomic<bool>& f) : flag(f) {}
+    ~RenderGuard() {
+        flag.store(false);
+    }
+};
+
 template <typename Derived>
 class FractalBase : public sf::Transformable, public sf::Drawable {
 protected:
@@ -68,9 +77,10 @@ protected:
     std::vector<render_target> render_targets;
     // 0 means thread is working
     // 1 means thread finished
-    // 2 means thread is explicitly stopped
-    std::vector<unsigned char> thread_stop_flags;
+    // 2 means thread is requested to stop
+    std::vector<std::atomic<unsigned char>> thread_stop_flags;
     unsigned int max_threads = 0;
+    std::atomic<bool> g_isCpuRendering = false;
 
 
     // Fractal properties

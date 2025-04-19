@@ -8,63 +8,71 @@
 
 void cpu_render(render_target target, unsigned char* pixels, unsigned int width, unsigned int height, double zoom_x, double zoom_y,
     double x_offset, double y_offset, sf::Color* palette, unsigned int paletteSize,
-    unsigned int max_iterations, unsigned int* total_iterations, unsigned char& finish_flag
+    unsigned int max_iterations, unsigned int* total_iterations, std::atomic<unsigned char>& finish_flag
     )
 {
-    finish_flag = 0;
-    if (target.x_end > width) {
-        target.x_end = width;
-    }
-    if (target.y_end > height) {
-        target.y_end = height;
-    }
-    if (target.x_start < 0) {
-        target.x_start = 0;
-    }
-    if (target.y_start < 0) {
-        target.y_start = 0;
-    }
-    for(unsigned int y = target.y_start; y < target.y_end; ++y){
-        for(unsigned int x = target.x_start; x < target.x_end; ++x){
-            double zr = 0.0;
-            double zi = 0.0;
-            double cr = x / zoom_x - x_offset;
-            double ci = y / zoom_y - y_offset;
+    try{
 
-            unsigned int curr_iter = 0;
-            while (curr_iter < max_iterations && zr * zr + zi * zi < 4.0) {
-                double tmp_zr = zr;
-                zr = zr * zr - zi * zi + cr;
-                zi = 2.0 * tmp_zr * zi + ci;
+        finish_flag.store(0);
+        if (target.x_end > width) {
+            target.x_end = width;
+        }
+        if (target.y_end > height) {
+            target.y_end = height;
+        }
+        if (target.x_start < 0) {
+            target.x_start = 0;
+        }
+        if (target.y_start < 0) {
+            target.y_start = 0;
+        }
+        for(unsigned int y = target.y_start; y < target.y_end; ++y){
+            for(unsigned int x = target.x_start; x < target.x_end; ++x){
+                double zr = 0.0;
+                double zi = 0.0;
+                double cr = x / zoom_x - x_offset;
+                double ci = y / zoom_y - y_offset;
 
-                ++curr_iter;
-                if(finish_flag == 1) {
-                    finish_flag = 2;
-                    return;
+                unsigned int curr_iter = 0;
+                while (curr_iter < max_iterations && zr * zr + zi * zi < 4.0) {
+                    double tmp_zr = zr;
+                    zr = zr * zr - zi * zi + cr;
+                    zi = 2.0 * tmp_zr * zi + ci;
+
+                    ++curr_iter;
+                    if(finish_flag.load() == 2) {
+                        finish_flag.store(1);
+                        return;
+                    }
                 }
-            }
 
-            unsigned char r, g, b;
-            if (curr_iter == max_iterations) {
-                r = g = b = 0;
-            } else {
-                curr_iter = curr_iter + 1.0f - log2(log2(sqrt(zr * zr + zi * zi)));
-                const auto gradient = static_cast<float>(Gradient(curr_iter, max_iterations));
-                const int index = static_cast<int>(gradient * static_cast<float>(paletteSize - 1));
-                const sf::Color color = getPaletteColor(index, paletteSize, palette);
-                r = color.r;
-                g = color.g;
-                b = color.b;
+                unsigned char r, g, b;
+                if (curr_iter == max_iterations) {
+                    r = g = b = 0;
+                } else {
+                    curr_iter = curr_iter + 1.0f - log2(log2(sqrt(zr * zr + zi * zi)));
+                    const auto gradient = static_cast<float>(Gradient(curr_iter, max_iterations));
+                    const int index = static_cast<int>(gradient * static_cast<float>(paletteSize - 1));
+                    const sf::Color color = getPaletteColor(index, paletteSize, palette);
+                    r = color.r;
+                    g = color.g;
+                    b = color.b;
+                }
+                const unsigned int index = (y * width + x) * 4;
+                pixels[index] = r;
+                pixels[index + 1] = g;
+                pixels[index + 2] = b;
+                pixels[index + 3] = 255;
+                *total_iterations += curr_iter;
             }
-            const unsigned int index = (y * width + x) * 4;
-            pixels[index] = r;
-            pixels[index + 1] = g;
-            pixels[index + 2] = b;
-            pixels[index + 3] = 255;
-            *total_iterations += curr_iter;
         }
     }
-    finish_flag = 1;
+    catch (const std::exception& e) {
+        std::cerr << "ERROR in cpu_render thread (target y=" << target.y_start << "): " << e.what() << std::endl;
+    } catch (...) {
+        std::cerr << "ERROR in cpu_render thread (target y=" << target.y_start << "): Unknown exception!" << std::endl;
+    }
+    finish_flag.store(1);
 }
 
 
@@ -77,7 +85,7 @@ FractalBase<Derived>::FractalBase()
     zoom_scale(1.0), width(800), height(600), basic_width(800), basic_height(600),
     maxComputation(50.f), sprite(texture), iterationline(sf::PrimitiveType::LineStrip),
     gen(rd()), disX(-2.f, 2.f), disY(-1.5f, 1.5f) ,disVelX(-0.13f, 0.13f),
-    disVelY(-0.1f, 0.1f)
+    disVelY(-0.1f, 0.1f), thread_stop_flags(std::thread::hardware_concurrency() * 5)
 {
     isCudaAvailable = true;
     int* numDevices;
@@ -470,36 +478,108 @@ void FractalBase<Derived>::reset() {
 template <>
 void FractalBase<fractals::mandelbrot>::render(render_state quality) {
     if (!isCudaAvailable) {
-        if(quality == render_state::best) return;
-        std::thread main_thread([&](){
-            std::fill(thread_stop_flags.begin(), thread_stop_flags.end(), 1);
-            while (!std::all_of(thread_stop_flags.begin(), thread_stop_flags.end(), [](unsigned char state) { return (state == 1 || state == 2); })){
-                std::this_thread::sleep_for(std::chrono::microseconds(10));
+        if (quality == render_state::best) {
+            return;
+        }
+
+        bool expected_state = false;
+        if (!g_isCpuRendering.compare_exchange_strong(expected_state, true, std::memory_order_acq_rel)) {
+            return;
+        }
+
+        std::thread main_thread([&]() {
+
+            RenderGuard renderGuard(g_isCpuRendering);
+
+            if (!thread_stop_flags.empty()) {
+                for (auto& flag : thread_stop_flags) {
+                    flag.store(2, std::memory_order_release);
+                }
+
+                auto stop_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
+                bool all_acknowledged = false;
+                while (std::chrono::steady_clock::now() < stop_deadline) {
+                    all_acknowledged = true;
+                    for (const auto& flag : thread_stop_flags) {
+                        if (flag.load(std::memory_order_acquire) == 0) {
+                        }
+                        if (flag.load(std::memory_order_acquire) != 1) {
+                            all_acknowledged = false;
+                            break;
+                        }
+                    }
+                    if (all_acknowledged) break;
+                    std::this_thread::sleep_for(std::chrono::microseconds(100));
+                }
             }
-            memset(pixels, 0, basic_height * basic_width * 4 * sizeof(unsigned char));
-            max_threads = std::thread::hardware_concurrency();
-            thread_stop_flags.resize(max_threads);
-            for(unsigned int i = 0; i < max_threads; ++i) {
-                unsigned int x_start = 0;
-                unsigned int x_end = width;
-                unsigned int y_start = (height / max_threads) * i;
-                unsigned int y_end = (height / max_threads) * (i + 1);
-                render_targets.emplace_back(x_start, y_start, x_end, y_end);
+            unsigned int max_threads_local = std::thread::hardware_concurrency();
+            if (max_threads_local == 0) max_threads_local = 1;
+            render_targets.clear();
+
+            unsigned int rows_per_thread = basic_height / max_threads_local;
+            unsigned int remainder_rows = basic_height % max_threads_local;
+            unsigned int current_y_start = 0;
+            for (unsigned int i = 0; i < max_threads_local; ++i) {
+                unsigned int rows_for_this_thread = rows_per_thread + (i < remainder_rows ? 1 : 0);
+                if (rows_for_this_thread == 0 && current_y_start >= basic_height) continue;
+                unsigned int y_start = current_y_start;
+                unsigned int y_end = current_y_start + rows_for_this_thread;
+                if (y_start < y_end) {
+                    unsigned int x_start = 0;
+                    unsigned int x_end = basic_width;
+                    render_targets.emplace_back(x_start, y_start, x_end, y_end);
+                    current_y_start = y_end;
+                } else if (current_y_start >= basic_height) {
+                    break;
+                }
             }
-            for(unsigned int i = 0; i < max_threads; ++i) {
-                std::thread t(cpu_render, render_targets[i], pixels, width, height,
+
+            unsigned int actual_threads_to_launch = render_targets.size();
+
+            if (actual_threads_to_launch > thread_stop_flags.size()) {
+                std::cerr << "Error: More threads required (" << actual_threads_to_launch
+                          << ") than pre-allocated flags (" << thread_stop_flags.size() << "). Clamping." << std::endl;
+                actual_threads_to_launch = thread_stop_flags.size();
+            }
+
+            if (actual_threads_to_launch == 0 && basic_height > 0 && basic_width > 0) {
+                return;
+            }
+
+
+            for (unsigned int i = 0; i < actual_threads_to_launch; ++i) {
+                thread_stop_flags[i].store(0, std::memory_order_release);
+                std::thread t(cpu_render, render_targets[i], pixels, basic_width, basic_height,
                               zoom_x, zoom_y, x_offset, y_offset, palette.data(), paletteSize,
                               max_iterations, h_total_iterations, std::ref(thread_stop_flags[i]));
-                thread_stop_flags[i] = 0;
                 t.detach();
             }
-            while (!(std::all_of(thread_stop_flags.begin(), thread_stop_flags.end(), [](unsigned char state) { return state == 1; }))) {
-                std::this_thread::sleep_for(std::chrono::microseconds(1));
+
+            while (true) {
+                bool all_done = true;
+                if (actual_threads_to_launch > 0) {
+                    for(unsigned int i = 0; i < actual_threads_to_launch; ++i) {
+                        if (thread_stop_flags[i].load(std::memory_order_acquire) != 1) {
+                            all_done = false;
+                            break;
+                        }
+                    }
+                }
+
+                if (all_done) {
+                    break;
+                }
+
                 post_processing();
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
+            post_processing();
+
         });
+
         main_thread.detach();
         return;
+
     }
     cudaEvent_t event;
     cudaEventCreate(&event);

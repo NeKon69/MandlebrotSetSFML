@@ -61,6 +61,7 @@ void main_thread() {
     sf::Text fpsDisplay(mainFont);
     fpsDisplay.setPosition({ 10, 10 });
     fpsDisplay.setString("FPS: 0");
+    fpsDisplay.setFillColor(sf::Color::Black);
     sf::Text mandelbrotHardnessDisplay(mainFont);
     mandelbrotHardnessDisplay.setPosition({ 10, 40 });
     mandelbrotHardnessDisplay.setString("M-Hardness: 0.0");
@@ -811,8 +812,8 @@ void main_thread() {
          * Drawing phase: Clears buffers, draws fractals to the render target,
          * draws the render target to the window, then draws UI elements (text, TGUI) on top.
          */
-        window.clear(sf::Color::Red);
-        renderTarget.clear();
+        window.clear(sf::Color::Black);
+        renderTarget.clear(sf::Color::Black);
 
         renderTarget.draw(mandelbrotFractal);
         if (isJuliaVisible || isTimelapseActive) {
