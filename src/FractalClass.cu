@@ -470,13 +470,13 @@ void FractalBase<Derived>::reset() {
 template <>
 void FractalBase<fractals::mandelbrot>::render(render_state quality) {
     if (!isCudaAvailable) {
-
+        if(quality == render_state::best) return;
         std::thread main_thread([&](){
             std::fill(thread_stop_flags.begin(), thread_stop_flags.end(), 1);
             while (!std::all_of(thread_stop_flags.begin(), thread_stop_flags.end(), [](unsigned char state) { return (state == 1 || state == 2); })){
                 std::this_thread::sleep_for(std::chrono::microseconds(10));
             }
-            sf::Clock tracker;
+            memset(pixels, 0, basic_height * basic_width * 4 * sizeof(unsigned char));
             max_threads = std::thread::hardware_concurrency();
             thread_stop_flags.resize(max_threads);
             for(unsigned int i = 0; i < max_threads; ++i) {
@@ -493,12 +493,8 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
                 thread_stop_flags[i] = 0;
                 t.detach();
             }
-            while (tracker.getElapsedTime().asSeconds() < 1.f) {
-                if (std::all_of(thread_stop_flags.begin(), thread_stop_flags.end(), [](unsigned char state) { return state == 1; })) {
-                    return;
-                }
-                tracker.restart();
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            while (!(std::all_of(thread_stop_flags.begin(), thread_stop_flags.end(), [](unsigned char state) { return state == 1; }))) {
+                std::this_thread::sleep_for(std::chrono::microseconds(1));
                 post_processing();
             }
         });

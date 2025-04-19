@@ -723,6 +723,7 @@ void main_thread() {
 
             mandelbrotRenderClock.restart();
             mandelbrotFractal.render(currentMandelbrotQuality);
+            std::cout << "Rendering Mandelbrot with quality: " << (currentMandelbrotQuality == render_state::good? "Good" : "Best") << std::endl;
         }
         /*
          * Julia rendering decision logic:
