@@ -11,7 +11,7 @@ void cpu_render_mandelbrot(render_target target, unsigned char* pixels, unsigned
     unsigned int max_iterations, unsigned int* total_iterations, std::atomic<unsigned char>& finish_flag
     )
 {
-    try{
+    try {
 
         finish_flag.store(0);
         if (target.x_end > width) {
@@ -32,8 +32,9 @@ void cpu_render_mandelbrot(render_target target, unsigned char* pixels, unsigned
                 double zi = 0.0;
                 double cr = x / zoom_x - x_offset;
                 double ci = y / zoom_y - y_offset;
-
+                unsigned char r, g, b;
                 unsigned int curr_iter = 0;
+                unsigned int actual_max_iterations = 10;
                 while (curr_iter < max_iterations && zr * zr + zi * zi < 4.0) {
                     double tmp_zr = zr;
                     zr = zr * zr - zi * zi + cr;
@@ -45,8 +46,6 @@ void cpu_render_mandelbrot(render_target target, unsigned char* pixels, unsigned
                         return;
                     }
                 }
-
-                unsigned char r, g, b;
                 if (curr_iter == max_iterations) {
                     r = g = b = 0;
                 } else {
@@ -94,9 +93,6 @@ FractalBase<Derived>::FractalBase()
         std::cout << "IMPORTANT NO AVAILABLE CUDA DEVICES FOUND" << std::endl;
         std::cout << "Forcing to use CPU rendering" << std::endl;
         std::cout << "Please make sure you have CUDA installed and your GPU supports it" << std::endl;
-        isCudaAvailable = false;
-    }
-    if(std::is_same<Derived, fractals::mandelbrot>::value) {
         isCudaAvailable = false;
     }
     palette = createHSVPalette(20000);
@@ -538,7 +534,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
             }
 
             // --- Prepare for New Render Task & Divide Work ---
-            unsigned int max_threads_local = std::thread::hardware_concurrency();
+            unsigned int max_threads_local = std::thread::hardware_concurrency() * 5;
             if (max_threads_local == 0) max_threads_local = 1;
             render_targets.clear(); // Clear previous task definitions.
 
