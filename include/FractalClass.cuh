@@ -47,11 +47,30 @@ struct timelapse_propertier {
     float velocityX = 0, velocityY = 0;
 };
 
+struct render_target {
+    render_target(unsigned int xst, unsigned int yst,
+                  unsigned int xend, unsigned int yend) :
+        x_start(xst), y_start(yst), x_end(xend), y_end(yend) {}
+    unsigned int x_start;
+    unsigned int y_start;
+    unsigned int x_end;
+    unsigned int y_end;
+};
+
 template <typename Derived>
 class FractalBase : public sf::Transformable, public sf::Drawable {
 protected:
     // THE MOST IMPORTANT VALUE
     bool isCudaAvailable = false;
+
+    // CPU fallback properties
+    std::vector<std::thread> threads;
+    std::vector<render_target> render_targets;
+    // 0 means thread is working
+    // 1 means thread finished
+    // 2 means thread is explicitly stopped
+    std::vector<unsigned char> thread_stop_flags;
+    unsigned int max_threads = 0;
 
 
     // Fractal properties

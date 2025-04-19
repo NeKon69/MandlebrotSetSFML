@@ -4,24 +4,69 @@
 #include <iostream>
 #include <thread>
 #include <random>
+#include <functional>
 
-sf::Image stretchImageNearestNeighbor(const sf::Image& source, unsigned int targetWidth, unsigned int targetHeight) {
-    sf::Image result({ targetWidth, targetHeight }, sf::Color::Black);
+void cpu_render(render_target target, unsigned char* pixels, unsigned int width, unsigned int height, double zoom_x, double zoom_y,
+    double x_offset, double y_offset, sf::Color* palette, unsigned int paletteSize,
+    unsigned int max_iterations, unsigned int* total_iterations, unsigned char& finish_flag
+    )
+{
+    finish_flag = 0;
+    if (target.x_end > width) {
+        target.x_end = width;
+    }
+    if (target.y_end > height) {
+        target.y_end = height;
+    }
+    if (target.x_start < 0) {
+        target.x_start = 0;
+    }
+    if (target.y_start < 0) {
+        target.y_start = 0;
+    }
+    for(unsigned int y = target.y_start; y < target.y_end; ++y){
+        for(unsigned int x = target.x_start; x < target.x_end; ++x){
+            double zr = 0.0;
+            double zi = 0.0;
+            double cr = x / zoom_x - x_offset;
+            double ci = y / zoom_y - y_offset;
 
-    float scaleX = static_cast<float>(source.getSize().x) / targetWidth;
-    float scaleY = static_cast<float>(source.getSize().y) / targetHeight;
+            unsigned int curr_iter = 0;
+            while (curr_iter < max_iterations && zr * zr + zi * zi < 4.0) {
+                double tmp_zr = zr;
+                zr = zr * zr - zi * zi + cr;
+                zi = 2.0 * tmp_zr * zi + ci;
 
-    for (unsigned int y = 0; y < targetHeight; ++y) {
-        for (unsigned int x = 0; x < targetWidth; ++x) {
-            unsigned int srcX = static_cast<unsigned int>(x * scaleX);
-            unsigned int srcY = static_cast<unsigned int>(y * scaleY);
-            sf::Color color = source.getPixel({ srcX, srcY });
-            result.setPixel({ x, y }, color);
+                ++curr_iter;
+                if(finish_flag == 1) {
+                    finish_flag = 2;
+                    return;
+                }
+            }
+
+            unsigned char r, g, b;
+            if (curr_iter == max_iterations) {
+                r = g = b = 0;
+            } else {
+                curr_iter = curr_iter + 1.0f - log2(log2(sqrt(zr * zr + zi * zi)));
+                const auto gradient = static_cast<float>(Gradient(curr_iter, max_iterations));
+                const int index = static_cast<int>(gradient * static_cast<float>(paletteSize - 1));
+                const sf::Color color = getPaletteColor(index, paletteSize, palette);
+                r = color.r;
+                g = color.g;
+                b = color.b;
+            }
+            const unsigned int index = (y * width + x) * 4;
+            pixels[index] = r;
+            pixels[index + 1] = g;
+            pixels[index + 2] = b;
+            pixels[index + 3] = 255;
+            *total_iterations += curr_iter;
         }
     }
-
-    return result;
+    finish_flag = 1;
 }
+
 
 template <typename Derived>
 FractalBase<Derived>::FractalBase()
@@ -36,11 +81,14 @@ FractalBase<Derived>::FractalBase()
 {
     isCudaAvailable = true;
     int* numDevices;
-    cuDeviceGetCount(numDevices);
+    cudaGetDeviceCount(numDevices);
     if(*numDevices == 0) {
         std::cout << "IMPORTANT NO AVAILABLE CUDA DEVICES FOUND" << std::endl;
         std::cout << "Forcing to use CPU rendering" << std::endl;
         std::cout << "Please make sure you have CUDA installed and your GPU supports it" << std::endl;
+        isCudaAvailable = false;
+    }
+    if(std::is_same<Derived, fractals::mandelbrot>::value) {
         isCudaAvailable = false;
     }
     palette = createHSVPalette(20000);
@@ -85,8 +133,8 @@ template <typename Derived>
 FractalBase<Derived>::~FractalBase() {
     cudaFree(d_pixels);
     cudaFree(d_palette);
-    cudaFree(stopFlagDevice);
     cudaFree(d_total_iterations);
+    cudaFree(d_doubleCancelFlag);
     cudaFreeHost(pixels);
 	cudaFreeHost(compressed);
     cudaFreeHost(h_total_iterations);
@@ -286,6 +334,13 @@ void FractalBase<Derived>::set_resolution(sf::Vector2i target_resolution) {
 
 template <typename Derived>
 void FractalBase<Derived>::post_processing() {
+    if(!isCudaAvailable){
+        image = sf::Image({ basic_width, basic_height }, pixels);
+        texture = sf::Texture(image, true);
+        sprite.setTexture(texture, true);
+        sprite.setPosition({ 0, 0 });
+        return;
+    }
     if (antialiasing) {
         // SSAA rendering
         dim3 dimBlock(32, 32);
@@ -415,6 +470,39 @@ void FractalBase<Derived>::reset() {
 template <>
 void FractalBase<fractals::mandelbrot>::render(render_state quality) {
     if (!isCudaAvailable) {
+
+        std::thread main_thread([&](){
+            std::fill(thread_stop_flags.begin(), thread_stop_flags.end(), 1);
+            while (!std::all_of(thread_stop_flags.begin(), thread_stop_flags.end(), [](unsigned char state) { return (state == 1 || state == 2); })){
+                std::this_thread::sleep_for(std::chrono::microseconds(10));
+            }
+            sf::Clock tracker;
+            max_threads = std::thread::hardware_concurrency();
+            thread_stop_flags.resize(max_threads);
+            for(unsigned int i = 0; i < max_threads; ++i) {
+                unsigned int x_start = 0;
+                unsigned int x_end = width;
+                unsigned int y_start = (height / max_threads) * i;
+                unsigned int y_end = (height / max_threads) * (i + 1);
+                render_targets.emplace_back(x_start, y_start, x_end, y_end);
+            }
+            for(unsigned int i = 0; i < max_threads; ++i) {
+                std::thread t(cpu_render, render_targets[i], pixels, width, height,
+                              zoom_x, zoom_y, x_offset, y_offset, palette.data(), paletteSize,
+                              max_iterations, h_total_iterations, std::ref(thread_stop_flags[i]));
+                thread_stop_flags[i] = 0;
+                t.detach();
+            }
+            while (tracker.getElapsedTime().asSeconds() < 1.f) {
+                if (std::all_of(thread_stop_flags.begin(), thread_stop_flags.end(), [](unsigned char state) { return state == 1; })) {
+                    return;
+                }
+                tracker.restart();
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                post_processing();
+            }
+        });
+        main_thread.detach();
         return;
     }
     cudaEvent_t event;

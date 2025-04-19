@@ -2,7 +2,7 @@
 #include <TGUI/Backend/SFML-Graphics.hpp>
 #include <cuda_runtime.h>
 
-inline __device__ double Gradient(double current_iteration, double max_iter) {
+inline __device__ __host__ double Gradient(double current_iteration, double max_iter) {
     if (current_iteration >= max_iter) return 0.0;
     // comment following two lines to make the colors less appealing on the screen (less of the colors circle the black thing on the screen)
     // current_iteration = sqrt(current_iteration);
@@ -10,7 +10,7 @@ inline __device__ double Gradient(double current_iteration, double max_iter) {
     return (current_iteration) / static_cast<double>(max_iter);
 }
 
-inline __device__ sf::Color getPaletteColor(int index, int paletteSize, sf::Color* palette) {
+inline __device__ __host__ sf::Color getPaletteColor(int index, int paletteSize, sf::Color* palette) {
     index = (index < 0) ? 0 : ((index >= paletteSize) ? paletteSize - 1 : index);
     return palette[index];
 }
@@ -22,7 +22,9 @@ extern void cudaCheckError();
 extern void HSVtoRGB(double h, double s, double v, unsigned int& r, unsigned int& g, unsigned int& b);
 
 extern std::vector<sf::Color> CreateBlackOWhitePalette(int numColors);
+
 extern std::vector<sf::Color> createHSVPalette(int numColors, double startHue = 0.0);
+
 extern std::vector<sf::Color> BluePlusBlackWhitePalette(int numColors);
 
 extern std::vector<sf::Color> CreateOscillatingGrayscalePalette(int numColors, int frequency = 5);
