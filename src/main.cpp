@@ -123,7 +123,7 @@ void main_thread() {
     mandelbrotFractal.setMaxComputation(measuredGflops);
     juliaFractal.setMaxComputation(measuredGflops);
 
-    /*
+    /*Process finished with exit code 139 (interrupted by signal 11:SIGSEGV)
      * TGUI setup: associating the GUI manager with the window and creating widgets
      * (palette selector combobox, HSV offset slider) with their respective callbacks
      * to update fractal parameters and trigger re-renders.

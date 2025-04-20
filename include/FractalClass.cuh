@@ -78,7 +78,7 @@ protected:
     std::vector<std::atomic<unsigned char>> thread_stop_flags;
     unsigned int max_threads = 0;
     std::atomic<bool> g_isCpuRendering = false;
-    std::atomic<bool> allWorkDone = false;
+    std::atomic<bool> allWorkDone{true};
 
 
     // Fractal properties
@@ -206,17 +206,20 @@ public:
 
     void reset();
 
+
+    void cpu_render(render_state quality, double zx=0.0, double zy=0.0);
+
     /**
-     * @brief CUDA kernel function to calculate and render the fractal given template.
-     * This kernel is executed in parallel by multiple threads on the GPU.
-     * Each thread calculates the color of a single pixel based on its position
-     * and the fractal rendering algorithm
-     */
+    * @brief CUDA kernel function to calculate and render the fractal given template.
+    * This kernel is executed in parallel by multiple threads on the GPU.
+    * Each thread calculates the color of a single pixel based on its position
+    * and the fractal rendering algorithm
+    */
     void render(render_state quality);
 
     void render(
         render_state quality,
-        double mouse_x, double mouse_y
+        double zx, double zy
     );
 
     void drawIterationLines(sf::Vector2i mouse_pos);

@@ -457,6 +457,112 @@ void FractalBase<Derived>::reset() {
     iterationpoints.resize(max_iterations);
 }
 
+template<typename Derived>
+void FractalBase<Derived>::cpu_render(render_state quality, double zx, double zy) {
+    if (quality == render_state::best) return;
+    g_isCpuRendering.store(false);
+    // --- Launch Background CPU Rendering Thread ---
+    // Offload the CPU rendering to a separate thread to avoid blocking the main application thread.
+    std::thread main_thread([&]() { // Lambda captures necessary variables by reference.
+        // --- Automatic Lock Release ---
+        // This RAII guard ensures g_isCpuRendering is set back to false when the lambda finishes
+        // execution, even if an exception occurs. This releases the global rendering lock.
+        RenderGuard renderGuard(g_isCpuRendering);
+
+        // --- Prepare for New Render Task & Divide Work ---
+        unsigned int max_threads_local = std::thread::hardware_concurrency();
+        if (max_threads_local == 0) max_threads_local = 1;
+        render_targets.clear(); // Clear previous task definitions.
+
+        // Distribute image rows among available threads, handling remainders.
+        unsigned int rows_per_thread = basic_height / max_threads_local;
+        unsigned int remainder_rows = basic_height % max_threads_local;
+        unsigned int current_y_start = 0;
+        for (unsigned int i = 0; i < max_threads_local; ++i) {
+            unsigned int rows_for_this_thread = rows_per_thread + (i < remainder_rows ? 1 : 0);
+            if (rows_for_this_thread == 0 && current_y_start >= basic_height) continue; // Avoid empty tasks
+            unsigned int y_start = current_y_start;
+            unsigned int y_end = current_y_start + rows_for_this_thread;
+            if (y_start < y_end) { // Ensure valid range
+                render_targets.emplace_back(0, y_start, basic_width, y_end);
+                current_y_start = y_end;
+            } else if (current_y_start >= basic_height) {
+                break; // Stop if all rows are assigned
+            }
+        }
+
+        unsigned int actual_threads_to_launch = render_targets.size();
+
+        // --- Thread Limit Check ---
+        // Ensure we don't try to launch more threads than we have control flags for.
+        if (actual_threads_to_launch > thread_stop_flags.size()) {
+            std::cerr << "Warning: Clamping required threads (" << actual_threads_to_launch
+                      << ") to available flags (" << thread_stop_flags.size() << ")." << std::endl;
+            actual_threads_to_launch = thread_stop_flags.size();
+            // This could result in parts of the image not being rendered.
+        }
+
+        if (actual_threads_to_launch == 0 && basic_height > 0 && basic_width > 0) {
+            // Edge case: image has dimensions, but no threads assigned (e.g., height too small or clamped).
+            return; // Exit lambda.
+        }
+
+        // --- Launch Worker Threads ---
+        for (unsigned int i = 0; i < actual_threads_to_launch; ++i) {
+            // Set flag state to '0' (working).
+            // memory_order_release: Make this write visible before the thread potentially reads it.
+            thread_stop_flags[i].store(0, std::memory_order_release);
+
+            // Launch the actual rendering function (e.g., cpu_render_mandelbrot) in a new thread.
+            std::thread t(cpu_render_mandelbrot, render_targets[i], pixels, basic_width, basic_height,
+                          zoom_x, zoom_y, x_offset, y_offset, palette.data(), paletteSize,
+                          max_iterations, h_total_iterations, std::ref(thread_stop_flags[i])); // Pass flag by ref
+
+            // Detach the worker thread: The main_thread won't wait (join) for it directly.
+            // Completion is tracked using the atomic stop flags.
+            t.detach();
+        }
+
+        // --- Wait for Completion & Intermediate Updates ---
+        // This loop polls the status flags of the worker threads.
+        while (true) {
+            bool all_done = true;
+            if (actual_threads_to_launch > 0) {
+                for(unsigned int i = 0; i < actual_threads_to_launch; ++i) {
+                    // Check if the flag is '1' (finished).
+                    // memory_order_acquire: Ensures reads here see the final writes from the worker.
+                    if (thread_stop_flags[i].load(std::memory_order_acquire) != 1) {
+                        all_done = false;
+                        break;
+                    }
+                }
+            }
+
+            if (all_done) {
+                break; // All workers finished.
+            }
+
+            // Allows updating the display or performing other tasks periodically while rendering.
+            post_processing();
+            // Sleep briefly to avoid pegging the CPU core running this management thread.
+            std::this_thread::sleep_for(std::chrono::microseconds(1));
+        }
+
+        // Final update after all threads are confirmed done.
+        post_processing();
+        g_isCpuRendering.store(false);
+        if(!allWorkDone.load()){
+            cpu_render(quality, zx, zy);
+        }
+    }); // End of lambda for main_thread
+
+    // Detach the management thread itself. This makes the entire CPU render operation
+    // asynchronous from the perspective of the function caller. The OS handles the detached thread.
+    // The RenderGuard inside the lambda ensures the global lock is eventually released.
+    main_thread.detach();
+}
+
+
 // that code served me good in the past, however it's being replaced with better version with atomic operations
 // nevermind, atomic sucks!!! async is the way to go
 // UwU sooooo saaaad UwU
@@ -474,6 +580,7 @@ void FractalBase<Derived>::reset() {
 template <>
 void FractalBase<fractals::mandelbrot>::render(render_state quality) {
     if (!isCudaAvailable) {
+
         // --- CPU Rendering Fallback ---
         // This block executes only if CUDA (GPU acceleration) is not available.
 
@@ -490,107 +597,13 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
         //                      and memory operations after this in this thread are visible to others (release).
         //                      Crucial for coordinating access to shared rendering resources.
         if (!g_isCpuRendering.compare_exchange_strong(expected_state, true, std::memory_order_acq_rel)) {
+            allWorkDone.store(false);
             // If the exchange failed, it means g_isCpuRendering was already true. Another CPU render is active.
             return;
         }
-
-        // --- Launch Background CPU Rendering Thread ---
-        // Offload the CPU rendering to a separate thread to avoid blocking the main application thread.
-        std::thread main_thread([&]() { // Lambda captures necessary variables by reference.
-
-            // --- Automatic Lock Release ---
-            // This RAII guard ensures g_isCpuRendering is set back to false when the lambda finishes
-            // execution, even if an exception occurs. This releases the global rendering lock.
-            RenderGuard renderGuard(g_isCpuRendering);
-
-            // --- Prepare for New Render Task & Divide Work ---
-            unsigned int max_threads_local = std::thread::hardware_concurrency();
-            if (max_threads_local == 0) max_threads_local = 1;
-            render_targets.clear(); // Clear previous task definitions.
-
-            // Distribute image rows among available threads, handling remainders.
-            unsigned int rows_per_thread = basic_height / max_threads_local;
-            unsigned int remainder_rows = basic_height % max_threads_local;
-            unsigned int current_y_start = 0;
-            for (unsigned int i = 0; i < max_threads_local; ++i) {
-                unsigned int rows_for_this_thread = rows_per_thread + (i < remainder_rows ? 1 : 0);
-                if (rows_for_this_thread == 0 && current_y_start >= basic_height) continue; // Avoid empty tasks
-                unsigned int y_start = current_y_start;
-                unsigned int y_end = current_y_start + rows_for_this_thread;
-                if (y_start < y_end) { // Ensure valid range
-                    render_targets.emplace_back(0, y_start, basic_width, y_end);
-                    current_y_start = y_end;
-                } else if (current_y_start >= basic_height) {
-                    break; // Stop if all rows are assigned
-                }
-            }
-
-            unsigned int actual_threads_to_launch = render_targets.size();
-
-            // --- Thread Limit Check ---
-            // Ensure we don't try to launch more threads than we have control flags for.
-            if (actual_threads_to_launch > thread_stop_flags.size()) {
-                std::cerr << "Warning: Clamping required threads (" << actual_threads_to_launch
-                          << ") to available flags (" << thread_stop_flags.size() << ")." << std::endl;
-                actual_threads_to_launch = thread_stop_flags.size();
-                // This could result in parts of the image not being rendered.
-            }
-
-            if (actual_threads_to_launch == 0 && basic_height > 0 && basic_width > 0) {
-                // Edge case: image has dimensions, but no threads assigned (e.g., height too small or clamped).
-                return; // Exit lambda.
-            }
-
-            // --- Launch Worker Threads ---
-            for (unsigned int i = 0; i < actual_threads_to_launch; ++i) {
-                // Set flag state to '0' (working).
-                // memory_order_release: Make this write visible before the thread potentially reads it.
-                thread_stop_flags[i].store(0, std::memory_order_release);
-
-                // Launch the actual rendering function (e.g., cpu_render_mandelbrot) in a new thread.
-                std::thread t(cpu_render_mandelbrot, render_targets[i], pixels, basic_width, basic_height,
-                              zoom_x, zoom_y, x_offset, y_offset, palette.data(), paletteSize,
-                              max_iterations, h_total_iterations, std::ref(thread_stop_flags[i])); // Pass flag by ref
-
-                // Detach the worker thread: The main_thread won't wait (join) for it directly.
-                // Completion is tracked using the atomic stop flags.
-                t.detach();
-            }
-
-            // --- Wait for Completion & Intermediate Updates ---
-            // This loop polls the status flags of the worker threads.
-            while (true) {
-                bool all_done = true;
-                if (actual_threads_to_launch > 0) {
-                    for(unsigned int i = 0; i < actual_threads_to_launch; ++i) {
-                        // Check if the flag is '1' (finished).
-                        // memory_order_acquire: Ensures reads here see the final writes from the worker.
-                        if (thread_stop_flags[i].load(std::memory_order_acquire) != 1) {
-                            all_done = false;
-                            break;
-                        }
-                    }
-                }
-
-                if (all_done) {
-                    break; // All workers finished.
-                }
-
-                // Allows updating the display or performing other tasks periodically while rendering.
-                post_processing();
-                // Sleep briefly to avoid pegging the CPU core running this management thread.
-                std::this_thread::sleep_for(std::chrono::microseconds(1));
-            }
-
-            // Final update after all threads are confirmed done.
-            post_processing();
-
-        }); // End of lambda for main_thread
-
-        // Detach the management thread itself. This makes the entire CPU render operation
-        // asynchronous from the perspective of the function caller. The OS handles the detached thread.
-        // The RenderGuard inside the lambda ensures the global lock is eventually released.
-        main_thread.detach();
+        allWorkDone.store(true);
+        cpu_render(quality);
+        post_processing();
         return;
 
     } // End of if (!isCudaAvailable)
