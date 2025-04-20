@@ -28,15 +28,12 @@ enum class Palletes {
     PerlinNoise,
     Water,
     Sunset,
-    MultiDimensional,
     DeepSpace,
     Physchodelic,
     IceCave,
     AccretionDisk,
     ElectricNebula
 };
-
-extern bool running_other_core;
 
 enum class render_state {
 	good,
@@ -81,6 +78,7 @@ protected:
     std::vector<std::atomic<unsigned char>> thread_stop_flags;
     unsigned int max_threads = 0;
     std::atomic<bool> g_isCpuRendering = false;
+    std::atomic<bool> allWorkDone = false;
 
 
     // Fractal properties
@@ -175,7 +173,9 @@ public:
     /*@returns amount of max_iterations*/
     unsigned int get_max_iters();
 
-    /*@returns mouse currently dragging state*/
+    /*
+     * @returns mouse currently dragging state
+     * */
     bool get_is_dragging();
 
     double get_x_offset();
@@ -194,8 +194,9 @@ public:
     sf::Texture getTexture();
     sf::Sprite get_sprite_rect();
 
-    /*@brief sets max_iterations to new given number
-    **@param max_iters
+    /*
+    @brief sets max_iterations to new given number
+    @param max_iters
     */
 	void set_max_iters(unsigned int max_iters);
 

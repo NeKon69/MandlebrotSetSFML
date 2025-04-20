@@ -33,9 +33,8 @@ void cpu_render_mandelbrot(render_target target, unsigned char* pixels, unsigned
                 double cr = x / zoom_x - x_offset;
                 double ci = y / zoom_y - y_offset;
                 unsigned char r, g, b;
-                unsigned int curr_iter = 0;
-                unsigned int actual_max_iterations = 10;
-                while (curr_iter < max_iterations && zr * zr + zi * zi < 4.0) {
+                float curr_iter = 0;
+                while (curr_iter < max_iterations && zr * zr + zi * zi < 100.0) {
                     double tmp_zr = zr;
                     zr = zr * zr - zi * zi + cr;
                     zi = 2.0 * tmp_zr * zi + ci;
@@ -49,7 +48,7 @@ void cpu_render_mandelbrot(render_target target, unsigned char* pixels, unsigned
                 if (curr_iter == max_iterations) {
                     r = g = b = 0;
                 } else {
-                    curr_iter = curr_iter + 1.0f - log2(log2(sqrt(zr * zr + zi * zi)));
+                    curr_iter = curr_iter + 1.0f - log2(log2(abs(sqrt(log10(zr * zr + zi * zi)))));
                     const auto gradient = static_cast<float>(Gradient(curr_iter, max_iterations));
                     const int index = static_cast<int>(gradient * static_cast<float>(paletteSize - 1));
                     const sf::Color color = getPaletteColor(index, paletteSize, palette);
@@ -84,7 +83,7 @@ FractalBase<Derived>::FractalBase()
     zoom_scale(1.0), width(800), height(600), basic_width(800), basic_height(600),
     maxComputation(50.f), sprite(texture), iterationline(sf::PrimitiveType::LineStrip),
     gen(rd()), disX(-2.f, 2.f), disY(-1.5f, 1.5f) ,disVelX(-0.13f, 0.13f),
-    disVelY(-0.1f, 0.1f), thread_stop_flags(std::thread::hardware_concurrency() * 5)
+    disVelY(-0.1f, 0.1f), thread_stop_flags(std::thread::hardware_concurrency() * 100)
 {
     isCudaAvailable = true;
     int* numDevices;
@@ -93,6 +92,9 @@ FractalBase<Derived>::FractalBase()
         std::cout << "IMPORTANT NO AVAILABLE CUDA DEVICES FOUND" << std::endl;
         std::cout << "Forcing to use CPU rendering" << std::endl;
         std::cout << "Please make sure you have CUDA installed and your GPU supports it" << std::endl;
+        isCudaAvailable = false;
+    }
+    if(std::is_same<Derived, fractals::mandelbrot>::value){
         isCudaAvailable = false;
     }
     palette = createHSVPalette(20000);
@@ -339,13 +341,9 @@ void FractalBase<Derived>::set_resolution(sf::Vector2i target_resolution) {
 template <typename Derived>
 void FractalBase<Derived>::post_processing() {
     if(!isCudaAvailable){
-        image = sf::Image({ basic_width, basic_height }, pixels);
-        texture = sf::Texture(image, true);
-        sprite.setTexture(texture, true);
-        sprite.setPosition({ 0, 0 });
-        return;
+        image.resize({ basic_width, basic_height }, pixels);
     }
-    if (antialiasing) {
+    else if (antialiasing) {
         // SSAA rendering
         dim3 dimBlock(32, 32);
         dim3 dimGrid(
@@ -359,7 +357,7 @@ void FractalBase<Derived>::post_processing() {
         cudaMemcpyAsync(compressed, ssaa_buffer, width * height * 4 * sizeof(std::uint8_t), cudaMemcpyDeviceToHost, stream);
 
         cudaStreamSynchronize(stream);
-        image = sf::Image({ basic_width, basic_height }, compressed);
+        image.resize({ basic_width, basic_height }, compressed);
     }
     else {
         cudaEventRecord(stop_rendering, stream);
@@ -374,9 +372,11 @@ void FractalBase<Derived>::post_processing() {
         {
             cudaStreamSynchronize(stream);
         }
-        image = sf::Image({ basic_width, basic_height }, pixels);
+        image.resize({ basic_width, basic_height }, pixels);
     }
-    texture = sf::Texture(image, true);
+    if(!texture.loadFromImage(image, true)){
+        std::cerr << "Data corrupted!/n";
+    }
     sprite.setTexture(texture, true);
     sprite.setPosition({ 0, 0 });
 }
@@ -503,38 +503,8 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
             // execution, even if an exception occurs. This releases the global rendering lock.
             RenderGuard renderGuard(g_isCpuRendering);
 
-            // --- Stop Previous Worker Threads (if any) ---
-            // If there are stop flags from a previous render cycle, signal those threads to stop.
-            if (!thread_stop_flags.empty()) {
-                for (auto& flag : thread_stop_flags) {
-                    // Set flag state to '2' (stop requested).
-                    // memory_order_release: Makes this write visible to worker threads checking the flag.
-                    flag.store(2, std::memory_order_release);
-                }
-
-                // --- Wait for Acknowledgment (with Timeout) ---
-                // Give worker threads a short window to acknowledge the stop request (by setting their flag to '1').
-                auto stop_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
-                bool all_acknowledged = false;
-                while (std::chrono::steady_clock::now() < stop_deadline) {
-                    all_acknowledged = true;
-                    for (const auto& flag : thread_stop_flags) {
-                        // Check if the thread has acknowledged (state '1').
-                        // memory_order_acquire: Ensures reads of the flag see the latest writes from the worker thread.
-                        if (flag.load(std::memory_order_acquire) != 1) {
-                            all_acknowledged = false;
-                            break; // No need to check further if one hasn't acknowledged.
-                        }
-                    }
-                    if (all_acknowledged) break;
-                    // Brief sleep to avoid busy-waiting while polling flags.
-                    std::this_thread::sleep_for(std::chrono::microseconds(100));
-                }
-                // Note: If timeout occurs, some threads might be orphaned if they didn't stop in time.
-            }
-
             // --- Prepare for New Render Task & Divide Work ---
-            unsigned int max_threads_local = std::thread::hardware_concurrency() * 5;
+            unsigned int max_threads_local = std::thread::hardware_concurrency();
             if (max_threads_local == 0) max_threads_local = 1;
             render_targets.clear(); // Clear previous task definitions.
 
@@ -609,7 +579,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
                 // Allows updating the display or performing other tasks periodically while rendering.
                 post_processing();
                 // Sleep briefly to avoid pegging the CPU core running this management thread.
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                std::this_thread::sleep_for(std::chrono::microseconds(1));
             }
 
             // Final update after all threads are confirmed done.
