@@ -82,16 +82,43 @@ __global__ void fractal_rendering(
             //    double nu = log2(log2(modulus) - log2(escape_radius));
             //    current_iteration = current_iteration + 1 - nu;
             //}
-            // Smooth iteration count
-            current_iteration = current_iteration + 1 - log2(log2(abs(sqrt(z_real * z_real + z_imag * z_imag))));
-            // Calculate gradient value
-            const auto gradient = static_cast<float>(Gradient(current_iteration, maxIterations));
-            // Map gradient to palette index
-            const int index = static_cast<int>(gradient * static_cast<float>(paletteSize - 1));
-            const sf::Color color = getPaletteColor(index, paletteSize, d_palette);
-            r = color.r;
-            g = color.g;
-            b = color.b;
+            float smooth_iteration = current_iteration + 1.0f - log2f(log2f(sqrtf(z_real * z_real + z_imag * z_imag)));
+
+            const float cycle_scale_factor = 25.0f;
+            float virtual_pos = smooth_iteration * cycle_scale_factor;
+            
+            float normalized_pingpong = fmodf(virtual_pos / static_cast<float>(paletteSize -1), 2.0f);
+            if (normalized_pingpong < 0.0f) {
+                normalized_pingpong += 2.0f;
+            }
+
+            float t_interp;
+            if (normalized_pingpong <= 1.0f) {
+                t_interp = normalized_pingpong;
+            } else {
+                t_interp = 2.0f - normalized_pingpong;
+            }
+            
+            float float_index = t_interp * (paletteSize - 1);
+            
+            int index1 = static_cast<int>(floorf(float_index));
+            int index2 = min(paletteSize - 1, index1 + 1);
+            
+            index1 = max(0, index1);
+            
+            float t_local = fmodf(float_index, 1.0f);
+            if (t_local < 0.0f) t_local += 1.0f;
+            
+            sf::Color color1 = getPaletteColor(index1, paletteSize, d_palette);
+            sf::Color color2 = getPaletteColor(index2, paletteSize, d_palette);
+            
+            float r_f = static_cast<float>(color1.r) + t_local * (static_cast<float>(color2.r) - static_cast<float>(color1.r));
+            float g_f = static_cast<float>(color1.g) + t_local * (static_cast<float>(color2.g) - static_cast<float>(color1.g));
+            float b_f = static_cast<float>(color1.b) + t_local * (static_cast<float>(color2.b) - static_cast<float>(color1.b));
+            
+            r = static_cast<unsigned char>(max(0.0f, min(255.0f, r_f)));
+            g = static_cast<unsigned char>(max(0.0f, min(255.0f, g_f)));
+            b = static_cast<unsigned char>(max(0.0f, min(255.0f, b_f)));
         }
         const unsigned int base_index = (y * width + x) * 4;
         for (int i = 0; i < scale_factor * 4; i += 4) {
@@ -158,13 +185,43 @@ __global__ void fractal_rendering(
         if (current_iteration == maxIterations) {
             r = g = b = 0;
         } else {
-            current_iteration = current_iteration + 1.0f - log2(log2(sqrt(z_real * z_real + z_imag * z_imag)));
-            const auto gradient = static_cast<float>(Gradient(current_iteration, maxIterations));
-            const int index = static_cast<int>(gradient * static_cast<float>(paletteSize - 1));
-            const sf::Color color = getPaletteColor(index, paletteSize, d_palette);
-            r = color.r;
-            g = color.g;
-            b = color.b;
+            float smooth_iteration = current_iteration + 1.0f - log2f(log2f(sqrtf(z_real * z_real + z_imag * z_imag)));
+
+            const float cycle_scale_factor = 25.0f;
+            float virtual_pos = smooth_iteration * cycle_scale_factor;
+
+            float normalized_pingpong = fmodf(virtual_pos / static_cast<float>(paletteSize -1), 2.0f);
+            if (normalized_pingpong < 0.0f) {
+                normalized_pingpong += 2.0f;
+            }
+
+            float t_interp;
+            if (normalized_pingpong <= 1.0f) {
+                t_interp = normalized_pingpong;
+            } else {
+                t_interp = 2.0f - normalized_pingpong;
+            }
+
+            float float_index = t_interp * (paletteSize - 1);
+
+            int index1 = static_cast<int>(floorf(float_index));
+            int index2 = min(paletteSize - 1, index1 + 1);
+
+            index1 = max(0, index1);
+
+            float t_local = fmodf(float_index, 1.0f);
+            if (t_local < 0.0f) t_local += 1.0f;
+
+            sf::Color color1 = getPaletteColor(index1, paletteSize, d_palette);
+            sf::Color color2 = getPaletteColor(index2, paletteSize, d_palette);
+
+            float r_f = static_cast<float>(color1.r) + t_local * (static_cast<float>(color2.r) - static_cast<float>(color1.r));
+            float g_f = static_cast<float>(color1.g) + t_local * (static_cast<float>(color2.g) - static_cast<float>(color1.g));
+            float b_f = static_cast<float>(color1.b) + t_local * (static_cast<float>(color2.b) - static_cast<float>(color1.b));
+
+            r = static_cast<unsigned char>(max(0.0f, min(255.0f, r_f)));
+            g = static_cast<unsigned char>(max(0.0f, min(255.0f, g_f)));
+            b = static_cast<unsigned char>(max(0.0f, min(255.0f, b_f)));
         }
 
         const unsigned int base_index = (y * width + x) * 4;
