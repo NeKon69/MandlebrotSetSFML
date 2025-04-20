@@ -32,7 +32,8 @@ enum class Palletes {
     Physchodelic,
     IceCave,
     AccretionDisk,
-    ElectricNebula
+    ElectricNebula,
+    Random
 };
 
 enum class render_state {

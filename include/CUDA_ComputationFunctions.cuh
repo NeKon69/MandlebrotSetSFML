@@ -55,3 +55,4 @@ extern std::vector<sf::Color> CreateElectricNebulaPalette(int numColors);
 
 extern std::vector<sf::Color> CreateDeepSpaceWideVeinsPalette(int numColors);
 
+extern std::vector<sf::Color> CreateRandomPalette(int numColors);

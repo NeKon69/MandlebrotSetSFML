@@ -134,7 +134,7 @@ void main_thread() {
             "HSV", "BlackOWhite", "Basic", "OscillatingGrayscale", "Fire", "Pastel",
             "Interpolated", "CyclicHSV", "FractalPattern", "PerlinNoise", "Water",
             "Sunset", "DeepSpace", "Physchodelic", "IceCave", "ElectricNebula",
-            "AccretionDisk"};
+            "AccretionDisk", "Random"};
 
     // --- Common layout values ---
     const float controlPadding = 10.f;

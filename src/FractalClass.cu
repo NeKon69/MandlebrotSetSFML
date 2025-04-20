@@ -94,9 +94,6 @@ FractalBase<Derived>::FractalBase()
         std::cout << "Please make sure you have CUDA installed and your GPU supports it" << std::endl;
         isCudaAvailable = false;
     }
-    if(std::is_same<Derived, fractals::mandelbrot>::value){
-        isCudaAvailable = false;
-    }
     palette = createHSVPalette(20000);
     paletteSize = 20000;
 
@@ -289,6 +286,12 @@ void FractalBase<Derived>::setPallete(std::string name) {
 		paletteSize = 20000;
 		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
 		curr_pallete = Palletes::ElectricNebula;
+    }
+    if (name == "Random") {
+        palette = CreateRandomPalette(20000);
+        paletteSize = 20000;
+        cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+        curr_pallete = Palletes::Random;
     }
 }
 
