@@ -52,6 +52,7 @@ int main() {
     sf::RenderWindow window(sf::VideoMode(windowSize), "Fractals");
     sf::RenderTexture renderTarget;
     renderTarget = sf::RenderTexture({windowSize.x, windowSize.y});
+    sf::Vector2u oldWindowSize = window.getSize();
 
     using MandelbrotFractal = FractalBase<fractals::mandelbrot>;
     using JuliaFractal = FractalBase<fractals::julia>;
@@ -88,7 +89,7 @@ int main() {
     double juliaSeedReal = 0.0;
     double juliaSeedImag = 0.0;
 
-    bool isJuliaVisible = false;
+    bool isJuliaVisible = true;
     bool isLeftMouseDownMandelbrot = false;
     bool isLeftMouseDownJulia = false;
     bool isTimelapseActive = false;
@@ -574,14 +575,6 @@ int main() {
                         window.close();
                         break;
 
-                    case sf::Keyboard::Scancode::R:
-                        if (isInMandelbrotArea) {
-                            mandelbrotFractal.set_max_iters(mandelbrotFractal.get_max_iters() * 2);
-                            needsMandelbrotRender = true;
-                            currentMandelbrotQuality = RenderQuality::best;
-                        }
-                        break;
-
                     case sf::Keyboard::Scancode::B:
                         if (isInMandelbrotArea) {
                             blockJuliaParameterUpdate = !blockJuliaParameterUpdate;
@@ -722,6 +715,16 @@ int main() {
                 }
             }
 
+            if(const auto pResized= event->getIf<sf::Event::Resized>()){
+                sf::Vector2u newWindowSize = pResized->size;
+                renderTarget = sf::RenderTexture(newWindowSize);
+                mandelbrotFractal.set_resolution({int(float(newWindowSize.x) * mandelbrotFractal.get_resolution().x / oldWindowSize.x), int(float(newWindowSize.y) * mandelbrotFractal.get_resolution().y / oldWindowSize.y )});
+                juliaFractal.set_resolution({int(float(newWindowSize.x) * juliaFractal.get_resolution().x / oldWindowSize.x), int(float(newWindowSize.y) * juliaFractal.get_resolution().y / oldWindowSize.y)});
+                juliaFractal.setPosition({float(newWindowSize.x - juliaFractal.get_resolution().x), 0});
+            }
+            else {
+
+            }
         } // End event loop
 
         sf::Time deltaTime = frameClock.restart();
