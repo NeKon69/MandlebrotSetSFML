@@ -112,7 +112,7 @@ FractalBase<Derived>::FractalBase()
     zoom_x(basic_zoom_x), zoom_y(basic_zoom_y),
     x_offset(2.25), y_offset(1.25),
     zoom_factor(1.0), zoom_speed(0.1),
-    zoom_scale(1.0),  maxComputation(50.f),
+    zoom_scale(1.0),  maxComputationF(50.f), maxComputationD(50.f),
     basic_width(800), basic_height(600),
     width(800), height(600),
     sprite(texture), iterationline(sf::PrimitiveType::LineStrip),
@@ -216,7 +216,7 @@ template<typename Derived>
 sf::Sprite FractalBase<Derived>::get_sprite_rect() { return sprite; }
 
 template <typename Derived>
-void FractalBase<Derived>::setMaxComputation(float Gflops) { maxComputation = 50.0f / 90 * Gflops; }
+void FractalBase<Derived>::setMaxComputation(float Gflops, float GDflops) { maxComputationF = 50.0f / 90 * Gflops; maxComputationD = 50.0f / 90 * GDflops; }
 
 template <typename Derived>
 void FractalBase<Derived>::setPallete(std::string name) {
@@ -402,18 +402,13 @@ void FractalBase<Derived>::post_processing() {
         cudaMemcpyAsync(pixels, d_pixels, width * height * 4 * sizeof(std::uint8_t), cudaMemcpyDeviceToHost, stream);
         cudaMemcpyAsync(h_total_iterations, d_total_iterations, sizeof(int), cudaMemcpyDeviceToHost, dataStream);
         cudaError_t status = cudaEventQuery(stop_rendering);
+        // THERE AIN'T NO WAY I AM DOING THAT SYNC LOGIC, JUST LET IT BE
+        cudaStreamSynchronize(stream);
         hardness_coeff = *h_total_iterations / (width * height * 1.0);
-        // ToDo implement a more complex solution for checking if the kernel is finished and not just blindly synchronizing
-        // the problem with current implementation is that it will wait for the kernel to finish (copying, other stuff, you know the point, basically sync the stream) even if you dont need to
-        // that situation may occur if you have good enough gpu, and you don't have that bad of frame delay  ( < 5)
-        if ((status != cudaSuccess && hardness_coeff > 0) || zoom_x > 1e7 || zoom_y > 1e7)
-        {
-            cudaStreamSynchronize(stream);
-        }
         image.resize({ basic_width, basic_height }, pixels);
     }
-    if(!texture.loadFromImage(image, true)){
-        std::cerr << "Data corrupted!/n";
+    if(!texture.loadFromImage(image, true)) {
+        std::cerr << "Data corrupted!\n";
     }
     sprite.setTexture(texture, true);
     sprite.setPosition({ 0, 0 });

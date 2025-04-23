@@ -120,14 +120,15 @@ int main() {
 
 
     /*
-     * GPU performance estimation to potentially calibrate fractal computation complexity.
+     * GPU performance estimation to potentially calibrate fractal computation complexity.measureGDFLOPS
      * The measured GFLOPS value is passed to the fractal objects.
      */
     std::cout << "Measuring GFLOPS..." << std::endl;
     float measuredGflops = measureGFLOPS(50000);
     std::cout << "Estimated GFLOPS: " << measuredGflops << std::endl;
-    mandelbrotFractal.setMaxComputation(measuredGflops);
-    juliaFractal.setMaxComputation(measuredGflops);
+    float measuredGDflops = measureGDFLOPS(50000);
+    mandelbrotFractal.setMaxComputation(measuredGflops, measuredGDflops);
+    juliaFractal.setMaxComputation(measuredGflops, measuredGDflops);
 
     /*
      * TGUI setup: associating the GUI manager with the window and creating widgets

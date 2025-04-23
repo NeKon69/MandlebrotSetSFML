@@ -98,7 +98,7 @@ protected:
     Palletes curr_pallete = Palletes::HSV;
     unsigned int degrees_offsetForHSV = 0;
     unsigned int drawen_iterations = 0;
-    float maxComputation;
+    float maxComputationF, maxComputationD;
 
     // Double precision stop flag
     int* d_doubleCancelFlag;
@@ -187,7 +187,7 @@ public:
     double get_zoom_scale();
     double get_hardness_coeff();
 
-    void setMaxComputation(float Gflops);
+    void setMaxComputation(float Gflops, float GDflops);
     void setPallete(std::string name);
     Palletes getPallete();
     sf::Vector2i get_resolution() const;
