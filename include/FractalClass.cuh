@@ -67,6 +67,7 @@ struct RenderGuard {
 template <typename Derived>
 class FractalBase : public sf::Transformable, public sf::Drawable {
 protected:
+
     // THE MOST IMPORTANT VALUE
     bool isCudaAvailable = false;
 

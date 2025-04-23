@@ -48,13 +48,43 @@ void cpu_render_mandelbrot(render_target target, unsigned char* pixels, unsigned
                 if (curr_iter == max_iterations) {
                     r = g = b = 0;
                 } else {
-                    curr_iter = curr_iter + 1.0f - log2(log2(abs(sqrt(log10(zr * zr + zi * zi)))));
-                    const auto gradient = static_cast<float>(Gradient(curr_iter, max_iterations));
-                    const int index = static_cast<int>(gradient * static_cast<float>(paletteSize - 1));
-                    const sf::Color color = getPaletteColor(index, paletteSize, palette);
-                    r = color.r;
-                    g = color.g;
-                    b = color.b;
+                    double smooth_iteration = curr_iter + 1.0f - log2f(log2f(sqrtf(zr * zr + zi * zi)));
+
+                    const double cycle_scale_factor = 25.0f;
+                    double virtual_pos = smooth_iteration * cycle_scale_factor;
+
+                    double normalized_pingpong = fmodf(virtual_pos / static_cast<double>(paletteSize -1), 2.0f);
+                    if (normalized_pingpong < 0.0f) {
+                        normalized_pingpong += 2.0f;
+                    }
+
+                    double t_interp;
+                    if (normalized_pingpong <= 1.0f) {
+                        t_interp = normalized_pingpong;
+                    } else {
+                        t_interp = 2.0f - normalized_pingpong;
+                    }
+
+                    double float_index = t_interp * (paletteSize - 1);
+
+                    int index1 = static_cast<int>(floorf(float_index));
+                    int index2 = std::min(int(paletteSize - 1), index1 + 1);
+
+                    index1 = std::max(0, index1);
+
+                    double t_local = fmodf(float_index, 1.0f);
+                    if (t_local < 0.0f) t_local += 1.0f;
+
+                    sf::Color color1 = getPaletteColor(index1, paletteSize, palette);
+                    sf::Color color2 = getPaletteColor(index2, paletteSize, palette);
+
+                    float r_f = static_cast<float>(color1.r) + t_local * (static_cast<float>(color2.r) - static_cast<float>(color1.r));
+                    float g_f = static_cast<float>(color1.g) + t_local * (static_cast<float>(color2.g) - static_cast<float>(color1.g));
+                    float b_f = static_cast<float>(color1.b) + t_local * (static_cast<float>(color2.b) - static_cast<float>(color1.b));
+
+                    r = static_cast<unsigned char>(std::max(0.0f, std::min(255.0f, r_f)));
+                    g = static_cast<unsigned char>(std::max(0.0f, std::min(255.0f, g_f)));
+                    b = static_cast<unsigned char>(std::max(0.0f, std::min(255.0f, b_f)));
                 }
                 const unsigned int index = (y * width + x) * 4;
                 pixels[index] = r;
@@ -76,19 +106,24 @@ void cpu_render_mandelbrot(render_target target, unsigned char* pixels, unsigned
 
 template <typename Derived>
 FractalBase<Derived>::FractalBase()
-    : max_iterations(300), basic_zoom_x(240.0), basic_zoom_y(240.0),
+    :
+    thread_stop_flags(std::thread::hardware_concurrency() * 100),
+    max_iterations(300), basic_zoom_x(240.0), basic_zoom_y(240.0),
     zoom_x(basic_zoom_x), zoom_y(basic_zoom_y),
     x_offset(2.25), y_offset(1.25),
     zoom_factor(1.0), zoom_speed(0.1),
-    zoom_scale(1.0), width(800), height(600), basic_width(800), basic_height(600),
-    maxComputation(50.f), sprite(texture), iterationline(sf::PrimitiveType::LineStrip),
-    gen(rd()), disX(-2.f, 2.f), disY(-1.5f, 1.5f) ,disVelX(-0.13f, 0.13f),
-    disVelY(-0.1f, 0.1f), thread_stop_flags(std::thread::hardware_concurrency() * 100)
+    zoom_scale(1.0),  maxComputation(50.f),
+    basic_width(800), basic_height(600),
+    width(800), height(600),
+    sprite(texture), iterationline(sf::PrimitiveType::LineStrip),
+    gen(rd()),
+    disX(-2.f, 2.f), disY(-1.5f, 1.5f),
+    disVelX(-0.13f, 0.13f),disVelY(-0.1f, 0.1f)
 {
     isCudaAvailable = true;
-    int* numDevices;
-    cudaGetDeviceCount(numDevices);
-    if(*numDevices == 0) {
+    int numDevices;
+    cudaGetDeviceCount(&numDevices);
+    if(numDevices == 0) {
         std::cout << "IMPORTANT NO AVAILABLE CUDA DEVICES FOUND" << std::endl;
         std::cout << "Forcing to use CPU rendering" << std::endl;
         std::cout << "Please make sure you have CUDA installed and your GPU supports it" << std::endl;
@@ -637,7 +672,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
             (width + dimBlock.x - 1) / dimBlock.x,
             (height + dimBlock.y - 1) / dimBlock.y
         );
-        fractal_rendering<<<dimGrid, dimBlock, 0, stream>>>(
+        fractal_rendering<double><<<dimGrid, dimBlock, 0, stream>>>(
             d_pixels, len, width, height, render_zoom_x, render_zoom_y,
             x_offset, y_offset, d_palette, paletteSize,
             max_iterations, d_total_iterations
@@ -650,10 +685,10 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
             (height + dimBlock.y - 1) / dimBlock.y
         );
 
-        fractal_rendering<<<dimGrid, dimBlock, 0, stream>>>(
-            d_pixels, len, width, height, float(render_zoom_x), float(render_zoom_y),
-            float(x_offset), float(y_offset), d_palette, paletteSize,
-            float(max_iterations), d_total_iterations
+        fractal_rendering<float><<<dimGrid, dimBlock, 0, stream>>>(
+            d_pixels, len, width, height, render_zoom_x, render_zoom_y,
+            x_offset, y_offset, d_palette, paletteSize,
+            max_iterations, d_total_iterations
             );
     }
 
@@ -663,11 +698,20 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
         dimBlock.y -= 2;
         dimGrid.x = (width + dimBlock.x - 1) / dimBlock.x;
         dimGrid.y = (height + dimBlock.y - 1) / dimBlock.y;
-        fractal_rendering<<<dimGrid, dimBlock, 0, stream>>>(
-            d_pixels, len, width, height, render_zoom_x, render_zoom_y,
-            x_offset, y_offset, d_palette, paletteSize,
-            max_iterations, d_total_iterations
+        if (zoom_x > 1e7) {
+            fractal_rendering<double><<<dimGrid, dimBlock, 0, stream>>>(
+                d_pixels, len, width, height, render_zoom_x, render_zoom_y,
+                x_offset, y_offset, d_palette, paletteSize,
+                max_iterations, d_total_iterations
+                );
+        }
+        else {
+            fractal_rendering<float><<<dimGrid, dimBlock, 0, stream>>>(
+                    d_pixels, len, width, height, render_zoom_x, render_zoom_y,
+                    x_offset, y_offset, d_palette, paletteSize,
+                    max_iterations, d_total_iterations
             );
+        }
         err = cudaGetLastError();
         if (dimBlock.x < 2) {
             std::cout << "Critical Issue (mandelbrot set): " << cudaGetErrorString(err) << "\n";
@@ -733,7 +777,7 @@ void FractalBase<fractals::julia>::render(
                 (width + dimBlock.x - 1) / dimBlock.x,
                 (height + dimBlock.y - 1) / dimBlock.y
         );
-        fractal_rendering<<<dimGrid, dimBlock, 0, stream>>>(
+        fractal_rendering<double><<<dimGrid, dimBlock, 0, stream>>>(
                 d_pixels, len, width, height, render_zoom_x, render_zoom_y,
                 x_offset, y_offset, d_palette, paletteSize,
                 max_iterations, d_total_iterations, zx, zy
@@ -745,13 +789,14 @@ void FractalBase<fractals::julia>::render(
                 (width + dimBlock.x - 1) / dimBlock.x,
                 (height + dimBlock.y - 1) / dimBlock.y
         );
-
-        fractal_rendering<<<dimGrid, dimBlock, 0, stream>>>(
-                d_pixels, len, width, height, float(render_zoom_x), float(render_zoom_y),
-                float(x_offset), float(y_offset), d_palette, paletteSize,
-                float(max_iterations), d_total_iterations, float(zx), float(zy)
+        fractal_rendering<float><<<dimGrid, dimBlock, 0, stream>>>(
+                d_pixels, len, width, height, render_zoom_x, render_zoom_y,
+                x_offset, y_offset, d_palette, paletteSize,
+                max_iterations, d_total_iterations, zx, zy
         );
     }
+
+
 
     cudaError_t err = cudaGetLastError();
     while (err != cudaSuccess) {
@@ -759,11 +804,20 @@ void FractalBase<fractals::julia>::render(
         dimBlock.y -= 2;
         dimGrid.x = (width + dimBlock.x - 1) / dimBlock.x;
         dimGrid.y = (height + dimBlock.y - 1) / dimBlock.y;
-        fractal_rendering<<<dimGrid, dimBlock, 0, stream>>>(
-            d_pixels, len, width, height, float(render_zoom_x), float(render_zoom_y),
-            float(x_offset), float(y_offset), d_palette, paletteSize,
-            float(max_iterations), d_total_iterations, float(zx), float(zy)
+        if (zoom_x > 1e7) {
+            fractal_rendering<double><<<dimGrid, dimBlock, 0, stream>>>(
+                d_pixels, len, width, height, render_zoom_x, render_zoom_y,
+                x_offset, y_offset, d_palette, paletteSize,
+                max_iterations, d_total_iterations, zx, zy
             );
+        }
+        else {
+            fractal_rendering<float><<<dimGrid, dimBlock, 0, stream>>>(
+                    d_pixels, len, width, height, float(render_zoom_x), float(render_zoom_y),
+                    x_offset, y_offset, d_palette, paletteSize,
+                    max_iterations, d_total_iterations, zx, zy
+            );
+        }
         err = cudaGetLastError();
         if (dimBlock.x < 2) {
             std::cout << "Critical Issue (julia set): " << cudaGetErrorString(err) << "\n";

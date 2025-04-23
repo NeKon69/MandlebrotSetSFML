@@ -1,16 +1,10 @@
 #pragma once
 #include "../CUDA_ComputationFunctions.cuh"
 
+template <typename T>
 __global__ void fractal_rendering(
-	unsigned char* pixels, size_t size_of_pixels, int width, int height,
-	float zoom_x, float zoom_y, float x_offset, float y_offset,
-	sf::Color* d_palette, int paletteSize, float maxIterations, unsigned int* d_total_iterations,
-	float cReal, float cImaginary
-);
-
-__global__ void fractal_rendering(
-        unsigned char* pixels, size_t size_of_pixels, int width, int height,
-        double zoom_x, double zoom_y, double x_offset, double y_offset,
-        sf::Color* d_palette, int paletteSize, double maxIterations, unsigned int* d_total_iterations,
-        double cReal, double cImaginary
+        unsigned char* pixels, size_t size_of_pixels, unsigned int width, unsigned int height,
+        T zoom_x, T zoom_y, T x_offset, T y_offset,
+        sf::Color* d_palette, int paletteSize, T maxIterations, unsigned int* d_total_iterations,
+	    T cReal, T cImaginary
 );

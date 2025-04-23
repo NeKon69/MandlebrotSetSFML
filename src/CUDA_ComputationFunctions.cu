@@ -684,10 +684,9 @@ std::vector<sf::Color> CreateRandomPalette(int numColors) {
     std::random_device rd;
     std::mt19937 gen(rd());
 
-    // --- Random Parameters for Sinusoids ---
-    std::uniform_real_distribution<float> freqDist(1.0f, 8.0f); // Frequency of waves
-    std::uniform_real_distribution<float> phaseDist(0.0f, 2.0f * PI); // Phase shift
-    std::uniform_real_distribution<float> ampDist(0.1f, 0.45f); // Amplitude (how much it varies)
+    std::uniform_real_distribution<float> freqDist(1.0f, 8.0f);
+    std::uniform_real_distribution<float> phaseDist(0.0f, 2.0f * PI);
+    std::uniform_real_distribution<float> ampDist(0.f, 1.0f); // Amplitude (how much it varies)
     std::uniform_real_distribution<float> baseDist(0.5f, 0.9f); // Base value for S/V
     std::uniform_real_distribution<float> hueBaseDist(0.0f, 360.0f);
     std::uniform_real_distribution<float> hueAmpDist(90.0f, 180.0f); // Hue variation range
@@ -707,10 +706,8 @@ std::vector<sf::Color> CreateRandomPalette(int numColors) {
     float baseV = baseDist(gen);
     float ampV = ampDist(gen);
 
-    // --- Palette Generation ---
     std::vector<sf::Color> palette(numColors);
     if (numColors == 1) {
-        // Generate at least one color for the single case
         float h = fmod(baseH + ampH * std::sin(phaseH) + 360.0f, 360.0f);
         float s = std::max(0.0f, std::min(1.0f, baseS + ampS * std::sin(phaseS)));
         float v = std::max(0.0f, std::min(1.0f, baseV + ampV * std::sin(phaseV)));
@@ -720,16 +717,16 @@ std::vector<sf::Color> CreateRandomPalette(int numColors) {
 
     for (int i = 0; i < numColors; ++i) {
         float t = static_cast<float>(i) / (numColors - 1);
-        float angle = t * 2.0f * PI; // Use angle for cyclical patterns
+        float angle = t * 2.0f * PI;
 
         float h = baseH + ampH * std::sin(angle * freqH + phaseH);
-        h = fmod(h + 360.0f, 360.0f); // Ensure hue is in [0, 360)
+        h = fmod(h + 360.0f, 360.0f);
 
         float s = baseS + ampS * std::sin(angle * freqS + phaseS);
-        s = std::max(0.0f, std::min(1.0f, s)); // Clamp saturation [0, 1]
+        s = std::max(0.0f, std::min(1.0f, s));
 
         float v = baseV + ampV * std::sin(angle * freqV + phaseV);
-        v = std::max(0.0f, std::min(1.0f, v)); // Clamp value [0, 1]
+        v = std::max(0.0f, std::min(1.0f, v));
 
         palette[i] = HSVtoRGB({ h, s, v });
     }

@@ -21,7 +21,7 @@ void ComboBoxCreator(tgui::ComboBox::Ptr& comboBox, const std::vector<std::strin
  * It initializes the window, UI, fractal renderers, and handles the event loop,
  * rendering updates, and state management.
  */
-void main_thread() {
+int main() {
     /*
      * Core state variables tracking rendering quality, idle times for automatic
      * quality improvement, and flags indicating whether a re-render is necessary.
@@ -30,6 +30,7 @@ void main_thread() {
     float mandelbrotIdleTimeMs = 0.0f;
     sf::Time juliaIdleTime = sf::Time::Zero;
     sf::Clock frameClock;
+    int cnt_hui = 0;
 
     RenderQuality currentMandelbrotQuality = RenderQuality::good;
     RenderQuality previousMandelbrotQuality = RenderQuality::good;
@@ -55,8 +56,8 @@ void main_thread() {
      */
     sf::Font mainFont;
     if (!mainFont.openFromFile("fonts/LiberationMono-Bold.ttf")) {
-         std::cerr << "Error loading font!" << std::endl;
-        return;
+        std::cerr << "Error loading font!" << std::endl;
+        return -1;
     }
     sf::Text fpsDisplay(mainFont);
     fpsDisplay.setPosition({ 10, 10 });
@@ -485,7 +486,7 @@ void main_thread() {
                 event->is<sf::Event::KeyPressed>() ||
                 event->is<sf::Event::MouseButtonPressed>())
             {
-                 qualityImprovementClock.restart();
+                qualityImprovementClock.restart();
             }
 
             if (const auto* mouseMoveEvent = event->getIf<sf::Event::MouseMoved>()) {
@@ -506,11 +507,11 @@ void main_thread() {
                 }
                 else if (isInJuliaArea) {
                     mouseMovedInJuliaArea = true;
-                     if (juliaFractal.get_is_dragging()) {
+                    if (juliaFractal.get_is_dragging()) {
                         currentJuliaQuality = RenderQuality::good;
                         juliaFractal.dragging(mousePosition);
                         needsJuliaRender = true;
-                     }
+                    }
                 }
             }
 
@@ -520,7 +521,7 @@ void main_thread() {
             }
 
             if (const auto* keyPressEvent = event->getIf<sf::Event::KeyPressed>()) {
-                 bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < 800 && mousePosition.y >= 0 && mousePosition.y < 600;
+                bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < 800 && mousePosition.y >= 0 && mousePosition.y < 600;
 
                 switch(keyPressEvent->scancode) {
                     case sf::Keyboard::Scancode::Escape:
@@ -538,7 +539,7 @@ void main_thread() {
                     case sf::Keyboard::Scancode::B:
                         if (isInMandelbrotArea) {
                             blockJuliaParameterUpdate = !blockJuliaParameterUpdate;
-                             if (!blockJuliaParameterUpdate) needsJuliaRender = true;
+                            if (!blockJuliaParameterUpdate) needsJuliaRender = true;
                         }
                         break;
 
@@ -562,13 +563,13 @@ void main_thread() {
                     case sf::Keyboard::Scancode::T:
                         isTimelapseActive = !isTimelapseActive;
                         if(isTimelapseActive) {
-                             juliaFractal.start_timelapse();
-                             std::cout << "Timelapse started." << std::endl;
+                            juliaFractal.start_timelapse();
+                            std::cout << "Timelapse started." << std::endl;
                         } else {
-                             juliaFractal.stop_timelapse();
-                             std::cout << "Timelapse stopped." << std::endl;
-                             needsJuliaRender = true;
-                             currentJuliaQuality = RenderQuality::best;
+                            juliaFractal.stop_timelapse();
+                            std::cout << "Timelapse stopped." << std::endl;
+                            needsJuliaRender = true;
+                            currentJuliaQuality = RenderQuality::best;
                         }
                         break;
 
@@ -592,7 +593,7 @@ void main_thread() {
                             std::strftime(filenameBuffer, sizeof(filenameBuffer), "%Y-%m-%d_%H-%M-%S", &time_info);
                             std::string filename = "mandelbrot_";
                             filename += filenameBuffer;
-                            filename += ".png";
+                            filename += ".jpg";
 
                             if (screenshot.saveToFile(filename)) {
                                 std::cout << "Screenshot saved to " << filename << std::endl;
@@ -631,8 +632,8 @@ void main_thread() {
             }
 
             if (const auto* mouseButtonPressedEvent = event->getIf<sf::Event::MouseButtonPressed>()) {
-                 bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < 800 && mousePosition.y >= 0 && mousePosition.y < 600;
-                 bool isInJuliaArea = mousePosition.x >= windowSize.x - 800 && mousePosition.x < windowSize.x && mousePosition.y >= 0 && mousePosition.y < 600;
+                bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < 800 && mousePosition.y >= 0 && mousePosition.y < 600;
+                bool isInJuliaArea = mousePosition.x >= windowSize.x - 800 && mousePosition.x < windowSize.x && mousePosition.y >= 0 && mousePosition.y < 600;
 
                 if (mouseButtonPressedEvent->button == sf::Mouse::Button::Left) {
                     if (isInMandelbrotArea) {
@@ -666,10 +667,10 @@ void main_thread() {
                     }
                 }
                 else if (mouseButtonReleasedEvent->button == sf::Mouse::Button::Right) {
-                     bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < 800 && mousePosition.y >= 0 && mousePosition.y < 600;
-                     if (isInMandelbrotArea) {
-                         showMandelbrotIterationLines = false;
-                     }
+                    bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < 800 && mousePosition.y >= 0 && mousePosition.y < 600;
+                    if (isInMandelbrotArea) {
+                        showMandelbrotIterationLines = false;
+                    }
                 }
             }
 
@@ -750,8 +751,8 @@ void main_thread() {
 
 
         if (isTimelapseActive) {
-             renderJuliaThisFrame = true;
-             qualityForJuliaRender = RenderQuality::good;
+            renderJuliaThisFrame = true;
+            qualityForJuliaRender = RenderQuality::good;
         }
         else if (progressiveAnimation){
             renderJuliaThisFrame = true;
@@ -764,12 +765,12 @@ void main_thread() {
         }
         else if (mouseMovedInMandelbrotArea && !blockJuliaParameterUpdate && isMouseInMandelbrotUpdateArea)
         {
-             renderJuliaThisFrame = true;
-             isJuliaVisible = true;
-             qualityForJuliaRender = RenderQuality::good;
+            renderJuliaThisFrame = true;
+            isJuliaVisible = true;
+            qualityForJuliaRender = RenderQuality::good;
 
-             juliaSeedReal = -(mandelbrotFractal.get_x_offset() - (static_cast<double>(mousePosition.x) / mandelbrotFractal.get_zoom_x()));
-             juliaSeedImag = -(mandelbrotFractal.get_y_offset() - (static_cast<double>(mousePosition.y) / mandelbrotFractal.get_zoom_y()));
+            juliaSeedReal = -(mandelbrotFractal.get_x_offset() - (static_cast<double>(mousePosition.x) / mandelbrotFractal.get_zoom_x()));
+            juliaSeedImag = -(mandelbrotFractal.get_y_offset() - (static_cast<double>(mousePosition.y) / mandelbrotFractal.get_zoom_y()));
         }
         else {
             if (needsJuliaRender) {
@@ -777,8 +778,8 @@ void main_thread() {
                 qualityForJuliaRender = (currentJuliaQuality == RenderQuality::best) ? RenderQuality::best : RenderQuality::good;
             }
             if (isInteractingJuliaThisFrame) {
-                 renderJuliaThisFrame = true;
-                 qualityForJuliaRender = RenderQuality::good;
+                renderJuliaThisFrame = true;
+                qualityForJuliaRender = RenderQuality::good;
             }
             else if (!renderJuliaThisFrame) {
                 const float IDLE_TIME_THRESHOLD_JULIA_MS = 500.0f;
@@ -801,9 +802,9 @@ void main_thread() {
 
             juliaRenderClock.restart();
             if (isTimelapseActive) {
-                 juliaFractal.update_timelapse();
+                juliaFractal.update_timelapse();
             } else {
-                 juliaFractal.render(currentJuliaQuality, juliaSeedReal, juliaSeedImag);
+                juliaFractal.render(currentJuliaQuality, juliaSeedReal, juliaSeedImag);
             }
             juliaFractal.setPosition({ static_cast<float>(windowSize.x - 800), 0.f });
         }
@@ -852,10 +853,5 @@ void main_thread() {
         isZoomingJulia = false;
 
     } // End main loop
-}
-
-int main() {
-    std::thread mainAppThread(main_thread);
-    mainAppThread.join();
     return 0;
 }
