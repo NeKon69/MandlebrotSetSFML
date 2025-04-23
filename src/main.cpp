@@ -22,6 +22,7 @@ void ComboBoxCreator(tgui::ComboBox::Ptr& comboBox, const std::vector<std::strin
  * rendering updates, and state management.
  */
 int main() {
+
     /*
      * Core state variables tracking rendering quality, idle times for automatic
      * quality improvement, and flags indicating whether a re-render is necessary.
@@ -40,6 +41,8 @@ int main() {
     bool needsMandelbrotRender = true;
     bool needsJuliaRender = true;
     bool showMandelbrotIterationLines = false;
+    bool updateIterationsDynamicallyMandelbrot = false;
+    bool updateIterationsDynamicallyJulia = false;
 
     /*
      * Window and rendering target setup using SFML. An off-screen render texture
@@ -49,6 +52,13 @@ int main() {
     sf::RenderWindow window(sf::VideoMode(windowSize), "Fractals");
     sf::RenderTexture renderTarget;
     renderTarget = sf::RenderTexture({windowSize.x, windowSize.y});
+
+    using MandelbrotFractal = FractalBase<fractals::mandelbrot>;
+    using JuliaFractal = FractalBase<fractals::julia>;
+
+    MandelbrotFractal mandelbrotFractal;
+    JuliaFractal juliaFractal;
+    juliaFractal.setPosition({ static_cast<float>(windowSize.x - 800), 0.f });
 
     /*
      * Font loading and UI text elements for displaying FPS and fractal hardness.
@@ -67,7 +77,7 @@ int main() {
     mandelbrotHardnessDisplay.setPosition({ 10, 40 });
     mandelbrotHardnessDisplay.setString("M-Hardness: 0.0");
     sf::Text juliaHardnessDisplay(mainFont);
-    juliaHardnessDisplay.setPosition({ static_cast<float>(windowSize.x - 800 + 10), 40.f });
+    juliaHardnessDisplay.setPosition({ static_cast<float>(windowSize.x - juliaFractal.get_resolution().x + 10), 40.f });
     juliaHardnessDisplay.setString("J-Hardness: 0.0");
 
     /*
@@ -107,12 +117,7 @@ int main() {
      * Fractal object instantiation using the custom CUDA-accelerated FractalBase class.
      * One object for the Mandelbrot set and one for the Julia set.
      */
-    using MandelbrotFractal = FractalBase<fractals::mandelbrot>;
-    using JuliaFractal = FractalBase<fractals::julia>;
 
-    MandelbrotFractal mandelbrotFractal;
-    JuliaFractal juliaFractal;
-    juliaFractal.setPosition({ static_cast<float>(windowSize.x - 800), 0.f });
 
     /*
      * GPU performance estimation to potentially calibrate fractal computation complexity.
@@ -301,6 +306,26 @@ int main() {
     });
     gui.add(ResetMandelbrot);
 
+    tgui::CheckBox::Ptr UpdateMaxIterationsMandelbrot = tgui::CheckBox::create("Update Max Iterations Dynamically");
+    UpdateMaxIterationsMandelbrot->setPosition(controlGroupXOffsetMandelbrot, tgui::bindBottom(ResetMandelbrot) + controlPadding);
+    UpdateMaxIterationsMandelbrot->setSize({controlWidth / 16, 24 / 2});
+    UpdateMaxIterationsMandelbrot->onCheck([&]() {
+        if (UpdateMaxIterationsMandelbrot->isChecked()) {
+            maxIterEditBoxMandelbrot->setEnabled(false);
+            maxIterSliderMandelbrot->setEnabled(false);
+            updateIterationsDynamicallyMandelbrot = true;
+        } else {
+            maxIterEditBoxMandelbrot->setEnabled(true);
+            maxIterSliderMandelbrot->setEnabled(true);
+            updateIterationsDynamicallyMandelbrot = false;
+        }
+    });
+    UpdateMaxIterationsMandelbrot->onUncheck([&]() {
+        maxIterEditBoxMandelbrot->setEnabled(true);
+        maxIterSliderMandelbrot->setEnabled(true);
+        updateIterationsDynamicallyMandelbrot = false;
+    });
+    gui.add(UpdateMaxIterationsMandelbrot);
     // --- Julia Controls ---
 
     sf::Vector2i initialJuliaRes = juliaFractal.get_resolution();
@@ -465,6 +490,26 @@ int main() {
         progressiveAnimation = !progressiveAnimation;
     });
     gui.add(UpdateIterationsJulia);
+    tgui::CheckBox::Ptr UpdateMaxIterationsJulia = tgui::CheckBox::create("Update Max Iterations Dynamically");
+    UpdateMaxIterationsJulia->setPosition(controlGroupXOffsetJulia, tgui::bindBottom(UpdateIterationsJulia) + controlPadding);
+    UpdateMaxIterationsJulia->setSize({controlWidth / 16, 24 / 2});
+    UpdateMaxIterationsJulia->onCheck([&]() {
+        if (UpdateMaxIterationsJulia->isChecked()) {
+            maxIterEditBoxJulia->setEnabled(false);
+            maxIterSliderJulia->setEnabled(false);
+            updateIterationsDynamicallyJulia = true;
+        } else {
+            maxIterEditBoxJulia->setEnabled(true);
+            maxIterSliderJulia->setEnabled(true);
+            updateIterationsDynamicallyJulia = false;
+        }
+    });
+    UpdateMaxIterationsJulia->onUncheck([&]() {
+        maxIterEditBoxJulia->setEnabled(true);
+        maxIterSliderJulia->setEnabled(true);
+        updateIterationsDynamicallyJulia = false;
+    });
+    gui.add(UpdateMaxIterationsJulia);
     /*
      * The main application loop continues as long as the window is open.
      * It handles events, updates state, determines rendering needs, performs rendering,
@@ -492,8 +537,8 @@ int main() {
             if (const auto* mouseMoveEvent = event->getIf<sf::Event::MouseMoved>()) {
                 mousePosition = mouseMoveEvent->position;
 
-                bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < 800 && mousePosition.y >= 0 && mousePosition.y < 600;
-                bool isInJuliaArea = mousePosition.x >= windowSize.x - 800 && mousePosition.x < windowSize.x && mousePosition.y >= 0 && mousePosition.y < 600;
+                bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < mandelbrotFractal.get_resolution().x && mousePosition.y >= 0 && mousePosition.y < mandelbrotFractal.get_resolution().y;
+                bool isInJuliaArea = mousePosition.x >= windowSize.x - mandelbrotFractal.get_resolution().x && mousePosition.x < windowSize.x && mousePosition.y >= 0 && mousePosition.y < mandelbrotFractal.get_resolution().y;
 
                 if (isInMandelbrotArea) {
                     mouseMovedInMandelbrotArea = true;
@@ -521,7 +566,7 @@ int main() {
             }
 
             if (const auto* keyPressEvent = event->getIf<sf::Event::KeyPressed>()) {
-                bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < 800 && mousePosition.y >= 0 && mousePosition.y < 600;
+                bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < mandelbrotFractal.get_resolution().x && mousePosition.y >= 0 && mousePosition.y < mandelbrotFractal.get_resolution().y;
 
                 switch(keyPressEvent->scancode) {
                     case sf::Keyboard::Scancode::Escape:
@@ -615,27 +660,27 @@ int main() {
             if (const auto* mouseWheelEvent = event->getIf<sf::Event::MouseWheelScrolled>()) {
                 float delta = mouseWheelEvent->delta;
 
-                bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < 800 && mousePosition.y >= 0 && mousePosition.y < 600;
-                bool isInJuliaArea = mousePosition.x >= windowSize.x - 800 && mousePosition.x < windowSize.x && mousePosition.y >= 0 && mousePosition.y < 600;
+                bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < mandelbrotFractal.get_resolution().x && mousePosition.y >= 0 && mousePosition.y < mandelbrotFractal.get_resolution().y;
+                bool isInJuliaArea = mousePosition.x >= windowSize.x - juliaFractal.get_resolution().x && mousePosition.x < windowSize.x && mousePosition.y >= 0 && mousePosition.y < juliaFractal.get_resolution().y;
 
                 if (isInMandelbrotArea) {
                     isZoomingMandelbrot = true;
                     currentMandelbrotQuality = RenderQuality::good;
                     mandelbrotFractal.handleZoom(delta, mousePosition);
-                    mandelbrotFractal.set_max_iters( (unsigned int)std::min( std::max( 300.0 / std::sqrt(240.0) * std::sqrt(std::max(1.0, mandelbrotFractal.get_zoom_x())), 50.0), 10000.0 ) );
+                    UpdateMaxIterationsMandelbrot? mandelbrotFractal.set_max_iters( (unsigned int)std::min( std::max( 300.0 / std::sqrt(240.0) * std::sqrt(std::max(1.0, mandelbrotFractal.get_zoom_x())), 50.0), 10000.0 )) : mandelbrotFractal.set_max_iters(maxIterSliderMandelbrot->getValue());
                 }
                 else if (isInJuliaArea) {
                     isZoomingJulia = true;
                     currentJuliaQuality = RenderQuality::good;
-                    juliaFractal.handleZoom(delta, {int(mousePosition.x - windowSize.x + 800), mousePosition.y});
-                    juliaFractal.set_max_iters( (unsigned int)std::min( std::max( 300.0 / std::sqrt(240.0) * std::sqrt(std::max(1.0, juliaFractal.get_zoom_x())), 50.0), 10000.0 ) );
+                    juliaFractal.handleZoom(delta, {int(mousePosition.x - windowSize.x + juliaFractal.get_resolution().x), mousePosition.y});
+                    UpdateIterationsJulia? juliaFractal.set_max_iters( (unsigned int)std::min( std::max( 300.0 / std::sqrt(240.0) * std::sqrt(std::max(1.0, juliaFractal.get_zoom_x())), 50.0), 10000.0 )) : juliaFractal.set_max_iters(maxIterSliderJulia->getValue());
                     needsJuliaRender = true;
                 }
             }
 
             if (const auto* mouseButtonPressedEvent = event->getIf<sf::Event::MouseButtonPressed>()) {
-                bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < 800 && mousePosition.y >= 0 && mousePosition.y < 600;
-                bool isInJuliaArea = mousePosition.x >= windowSize.x - 800 && mousePosition.x < windowSize.x && mousePosition.y >= 0 && mousePosition.y < 600;
+                bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < mandelbrotFractal.get_resolution().x && mousePosition.y >= 0 && mousePosition.y < mandelbrotFractal.get_resolution().y;
+                bool isInJuliaArea = mousePosition.x >= windowSize.x - juliaFractal.get_resolution().x && mousePosition.x < windowSize.x && mousePosition.y >= 0 && mousePosition.y < juliaFractal.get_resolution().y;
 
                 if (mouseButtonPressedEvent->button == sf::Mouse::Button::Left) {
                     if (isInMandelbrotArea) {
@@ -669,7 +714,7 @@ int main() {
                     }
                 }
                 else if (mouseButtonReleasedEvent->button == sf::Mouse::Button::Right) {
-                    bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < 800 && mousePosition.y >= 0 && mousePosition.y < 600;
+                    bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < mandelbrotFractal.get_resolution().x && mousePosition.y >= 0 && mousePosition.y < mandelbrotFractal.get_resolution().y;
                     if (isInMandelbrotArea) {
                         showMandelbrotIterationLines = false;
                     }
@@ -749,7 +794,7 @@ int main() {
 
         bool renderJuliaThisFrame = false;
         RenderQuality qualityForJuliaRender = currentJuliaQuality;
-        bool isMouseInMandelbrotUpdateArea = mousePosition.x >= 0 && mousePosition.x < 800 && mousePosition.y >= 0 && mousePosition.y < 600;
+        bool isMouseInMandelbrotUpdateArea = mousePosition.x >= 0 && mousePosition.x < mandelbrotFractal.get_resolution().x && mousePosition.y >= 0 && mousePosition.y < mandelbrotFractal.get_resolution().y;
 
 
         if (isTimelapseActive) {
@@ -786,7 +831,7 @@ int main() {
             else if (!renderJuliaThisFrame) {
                 const float IDLE_TIME_THRESHOLD_JULIA_MS = 500.0f;
                 bool needsImprovement = juliaIdleTime.asMilliseconds() > IDLE_TIME_THRESHOLD_JULIA_MS;
-                bool isMouseOverMandelbrot = mousePosition.x >= 0 && mousePosition.x < 800 && mousePosition.y >= 0 && mousePosition.y < 600;
+                bool isMouseOverMandelbrot = mousePosition.x >= 0 && mousePosition.x < mandelbrotFractal.get_resolution().x && mousePosition.y >= 0 && mousePosition.y < mandelbrotFractal.get_resolution().y;
 
                 if (needsImprovement && !isMouseOverMandelbrot && (currentJuliaQuality != RenderQuality::best || previousJuliaQuality != RenderQuality::best))
                 {
@@ -808,7 +853,7 @@ int main() {
             } else {
                 juliaFractal.render(currentJuliaQuality, juliaSeedReal, juliaSeedImag);
             }
-            juliaFractal.setPosition({ static_cast<float>(windowSize.x - 800), 0.f });
+            juliaFractal.setPosition({ static_cast<float>(windowSize.x - juliaFractal.get_resolution().x), 0.f });
         }
 
         /*
