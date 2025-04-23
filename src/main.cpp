@@ -622,11 +622,13 @@ int main() {
                     isZoomingMandelbrot = true;
                     currentMandelbrotQuality = RenderQuality::good;
                     mandelbrotFractal.handleZoom(delta, mousePosition);
+                    mandelbrotFractal.set_max_iters( (unsigned int)std::min( std::max( 300.0 / std::sqrt(240.0) * std::sqrt(std::max(1.0, mandelbrotFractal.get_zoom_x())), 50.0), 10000.0 ) );
                 }
                 else if (isInJuliaArea) {
                     isZoomingJulia = true;
                     currentJuliaQuality = RenderQuality::good;
                     juliaFractal.handleZoom(delta, {int(mousePosition.x - windowSize.x + 800), mousePosition.y});
+                    juliaFractal.set_max_iters( (unsigned int)std::min( std::max( 300.0 / std::sqrt(240.0) * std::sqrt(std::max(1.0, juliaFractal.get_zoom_x())), 50.0), 10000.0 ) );
                     needsJuliaRender = true;
                 }
             }

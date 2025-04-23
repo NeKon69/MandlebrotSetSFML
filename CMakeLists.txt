@@ -30,9 +30,6 @@ endif()
 # Source files
 set(CPP_SOURCES
         src/main.cpp
-        src/TypeAliasClass.cpp
-        include/TypeAliasClass.h
-        # Add other .cpp files if any
 )
 
 set(CUDA_SOURCES
