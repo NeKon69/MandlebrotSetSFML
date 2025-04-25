@@ -5,6 +5,34 @@
 #include <thread>
 #include <random>
 #include <functional>
+#include <fstream>
+
+#define NVRTC_SAFE_CALL(x)                                        \
+  do {                                                            \
+    nvrtcResult result = x;                                       \
+    if (result != NVRTC_SUCCESS) {                                \
+      std::cerr << "\nerror: " #x " failed with error "           \
+                << nvrtcGetErrorString(result) << '\n';           \
+      return;                                                     \
+    }                                                             \
+} while(0)
+
+#define CUDA_SAFE_CALL(x)                                         \
+  do {                                                            \
+    CUresult result = x;                                          \
+    if (result != CUDA_SUCCESS) {                                 \
+      const char *msg;                                            \
+      cuGetErrorName(result, &msg);                               \
+      std::cerr << "\nerror: " #x " failed with error "           \
+                << msg << '\n';                                   \
+      return;                                                     \
+    }                                                             \
+} while(0)
+
+#define ALLOC_AND_COPY_TO_DEVICE_CU(cu_devPtr, hostVar, type)     \
+  CUdeviceptr cu_devPtr;                                          \
+  CUDA_SAFE_CALL(cuMemAlloc(&cu_devPtr, sizeof(type)));           \
+  CUDA_SAFE_CALL(cuMemcpyHtoD(cu_devPtr, &hostVar, sizeof(type))) \
 
 void cpu_render_mandelbrot(render_target target, unsigned char* pixels, unsigned int width, unsigned int height, double zoom_x, double zoom_y,
     double x_offset, double y_offset, sf::Color* palette, unsigned int paletteSize,
@@ -120,6 +148,9 @@ FractalBase<Derived>::FractalBase()
     disX(-2.f, 2.f), disY(-1.5f, 1.5f),
     disVelX(-0.13f, 0.13f),disVelY(-0.1f, 0.1f)
 {
+    cuInit(0);
+    cuDeviceGet(&device, 0);
+    cuCtxCreate(&ctx, 0, device);
     isCudaAvailable = true;
     int numDevices;
     cudaGetDeviceCount(&numDevices);
@@ -165,6 +196,32 @@ FractalBase<Derived>::FractalBase()
     cudaStreamCreate(&dataStream);
 
     iterationpoints.resize(max_iterations);
+
+
+    cu_d_pixels = (CUdeviceptr)d_pixels;
+    cu_palette = (CUdeviceptr)d_palette;
+    cu_total_iterations = (CUdeviceptr)d_total_iterations;
+
+    size_t len = width * height;
+    CUDA_SAFE_CALL(cuMemAlloc(&cu_len, sizeof(size_t)));
+    CUDA_SAFE_CALL(cuMemcpyHtoD(cu_len, &len, sizeof(size_t)));
+    CUDA_SAFE_CALL(cuMemAlloc(&cu_width, sizeof(width)));
+    CUDA_SAFE_CALL(cuMemcpyHtoD(cu_width, &width, sizeof(width)));
+
+    CUDA_SAFE_CALL(cuMemAlloc(&cu_height, sizeof(height)));
+    CUDA_SAFE_CALL(cuMemcpyHtoD(cu_height, &height, sizeof(height)));
+
+    CUDA_SAFE_CALL(cuMemAlloc(&cu_x_offset, sizeof(x_offset)));
+    CUDA_SAFE_CALL(cuMemcpyHtoD(cu_x_offset, &x_offset, sizeof(x_offset)));
+
+    CUDA_SAFE_CALL(cuMemAlloc(&cu_y_offset, sizeof(y_offset)));
+    CUDA_SAFE_CALL(cuMemcpyHtoD(cu_y_offset, &y_offset, sizeof(y_offset)));
+
+    CUDA_SAFE_CALL(cuMemAlloc(&cu_paletteSize, sizeof(paletteSize)));
+    CUDA_SAFE_CALL(cuMemcpyHtoD(cu_paletteSize, &paletteSize, sizeof(paletteSize)));
+
+    CUDA_SAFE_CALL(cuMemAlloc(&cu_max_iterations, sizeof(max_iterations)));
+    CUDA_SAFE_CALL(cuMemcpyHtoD(cu_max_iterations, &max_iterations, sizeof(max_iterations)));
 }
 
 template <typename Derived>
@@ -503,6 +560,156 @@ void FractalBase<Derived>::reset() {
 //    cudaMemcpy(stopFlagDevice, &flag, sizeof(bool), cudaMemcpyHostToDevice);
 //}
 
+/// Formula should be like this one\n
+/// new_real = z_real * z_real - z_imag * z_imag + real;\n
+/// z_imag =  2 * z_real * z_imag + imag;
+template <>
+void FractalBase<fractals::mandelbrot>::set_custom_formula(const std::string formula) {
+    kernel_code = R"(
+template<typename T>
+__global__ void fractal_rendering(
+        unsigned char* pixels, unsigned long size_of_pixels, unsigned int width, unsigned int height,
+        T zoom_x, T zoom_y, T x_offset, T y_offset,
+        sf::Color* d_palette, int paletteSize, T maxIterations, unsigned int* d_total_iterations)
+{
+
+
+    const unsigned int x =   blockIdx.x * blockDim.x + threadIdx.x;
+    const unsigned int y =   blockIdx.y * blockDim.y + threadIdx.y;
+    const unsigned int id = threadIdx.y * blockDim.x + threadIdx.x;
+
+    if (x == 0 && y == 0) {
+        *d_total_iterations = 0;
+    }
+
+    const size_t expected_size = width * height * 4;
+
+    const T scale_factor = static_cast<T>(size_of_pixels) / static_cast<T>(expected_size);
+
+    if (x < width && y < height) {
+        __shared__ unsigned int total_iterations[1024];
+        const T real = x / zoom_x - x_offset;
+        const T imag = y / zoom_y - y_offset;
+        T new_real = 0.0;
+        T z_real = 0.0;
+        T z_imag = 0.0;
+        T current_iteration = 0;
+        T z_comp = z_real * z_real + z_imag * z_imag;
+
+        while (z_comp < 4 && current_iteration < maxIterations) {
+)" + formula + R"(/n
+            z_real = new_real;
+            z_comp = z_real * z_real + z_imag * z_imag;
+            current_iteration++;
+        }
+
+        total_iterations[id] = static_cast<unsigned int>(current_iteration);
+//        __syncthreads();
+
+        for (unsigned int s = blockDim.x * blockDim.y / 2; s > 0; s >>= 1) {
+            if (id < s) {
+                total_iterations[id] += total_iterations[id + s];
+            }
+//            __syncthreads();
+        }
+        if (id == 0) {
+            //d_total_iterations += total_iterations[0];
+            atomicAdd(d_total_iterations, total_iterations[0]);
+        }
+
+        unsigned char r, g, b;
+        if (current_iteration == maxIterations) {
+            r = g = b = 0;
+        }
+
+        else {
+
+            //modulus = hypot(z_real, z_imag);
+            //double escape_radius = 2.0;
+            //if (modulus > escape_radius) {
+            //    double nu = log2(log2(modulus) - log2(escape_radius));
+            //    current_iteration = current_iteration + 1 - nu;
+            //}
+            T smooth_iteration = current_iteration + 1.0f - log2f(log2f(sqrtf(z_real * z_real + z_imag * z_imag)));
+
+            const T cycle_scale_factor = 25.0f;
+            T virtual_pos = smooth_iteration * cycle_scale_factor;
+
+            T normalized_pingpong = fmodf(virtual_pos / static_cast<T>(paletteSize -1), 2.0f);
+            if (normalized_pingpong < 0.0f) {
+                normalized_pingpong += 2.0f;
+            }
+
+            T t_interp;
+            if (normalized_pingpong <= 1.0f) {
+                t_interp = normalized_pingpong;
+            } else {
+                t_interp = 2.0f - normalized_pingpong;
+            }
+
+            T float_index = t_interp * (paletteSize - 1);
+
+            int index1 = static_cast<int>(floorf(float_index));
+            int index2 = min(paletteSize - 1, index1 + 1);
+
+            index1 = max(0, index1);
+
+            T t_local = fmodf(float_index, 1.0f);
+            if (t_local < 0.0f) t_local += 1.0f;
+
+            sf::Color color1 = getPaletteColor(index1, paletteSize, d_palette);
+            sf::Color color2 = getPaletteColor(index2, paletteSize, d_palette);
+
+            float r_f = static_cast<float>(color1.r) + t_local * (static_cast<float>(color2.r) - static_cast<float>(color1.r));
+            float g_f = static_cast<float>(color1.g) + t_local * (static_cast<float>(color2.g) - static_cast<float>(color1.g));
+            float b_f = static_cast<float>(color1.b) + t_local * (static_cast<float>(color2.b) - static_cast<float>(color1.b));
+
+            r = static_cast<unsigned char>(max(0.0f, min(255.0f, r_f)));
+            g = static_cast<unsigned char>(max(0.0f, min(255.0f, g_f)));
+            b = static_cast<unsigned char>(max(0.0f, min(255.0f, b_f)));
+        }
+        const unsigned int base_index = (y * width + x) * 4;
+        for (int i = 0; i < scale_factor * 4; i += 4) {
+            const unsigned int index = base_index + i;
+            pixels[index] = r;
+            pixels[index + 1] = g;
+            pixels[index + 2] = b;
+            pixels[index + 3] = 255;
+        }
+    }
+}
+)";
+    custom_formula = true;
+    const std::ifstream header_file("custom.cuh");
+    std::stringstream buffer;
+    buffer << header_file.rdbuf();
+    const std::string header_content = buffer.str();
+
+    const char *header_data = header_content.c_str();
+    constexpr char *header_name = "../include/custom.cuh";
+    const char *headers[] = {header_data};
+    constexpr char *includeNames[] = {header_name};
+
+
+    nvrtcProgram prog;
+    NVRTC_SAFE_CALL(nvrtcCreateProgram(&prog, kernel_code.c_str(), "custom.cu", 1, headers, includeNames));
+    constexpr char *opts[] = {"--gpu-architecture=compute_75"};
+    nvrtcResult compileResult = nvrtcCompileProgram(prog, 1, opts);
+
+    size_t ptxSize = 0;
+    NVRTC_SAFE_CALL(nvrtcGetPTXSize(prog, &ptxSize));
+    char *ptx = new char[ptxSize];
+
+    NVRTC_SAFE_CALL(nvrtcGetPTX(prog, ptx));
+    NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog));
+
+    CUDA_SAFE_CALL(cuModuleUnload(module));
+    CUDA_SAFE_CALL(cuModuleLoadDataEx(&module, ptx, 0, 0, 0)); // Load the generated PTX
+    CUDA_SAFE_CALL(cuModuleGetFunction(&kernel, module, "saxpy"));
+
+    delete[] ptx;
+
+}
 
 template <>
 void FractalBase<fractals::mandelbrot>::render(render_state quality) {
@@ -661,31 +868,52 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
     double render_zoom_y = zoom_y * zoom_scale;
     size_t len = width * height * 4;
     cudaEventRecord(start_rendering, stream);
-    if (render_zoom_x > 1e7) {
-        dimBlock = dim3(10, 10);
-        dimGrid = dim3(
-            (width + dimBlock.x - 1) / dimBlock.x,
-            (height + dimBlock.y - 1) / dimBlock.y
-        );
-        fractal_rendering<double><<<dimGrid, dimBlock, 0, stream>>>(
-            d_pixels, len, width, height, render_zoom_x, render_zoom_y,
-            x_offset, y_offset, d_palette, paletteSize,
-            max_iterations, d_total_iterations
+    if(!custom_formula){
+        if (render_zoom_x > 1e7) {
+            dimBlock = dim3(10, 10);
+            dimGrid = dim3(
+                    (width + dimBlock.x - 1) / dimBlock.x,
+                    (height + dimBlock.y - 1) / dimBlock.y
             );
-    }
-    else {
-        dimBlock = dim3(32, 32);
-        dimGrid = dim3(
-            (width + dimBlock.x - 1) / dimBlock.x,
-            (height + dimBlock.y - 1) / dimBlock.y
-        );
+            fractal_rendering<double><<<dimGrid, dimBlock, 0, stream>>>(
+                    d_pixels, len, width, height, render_zoom_x, render_zoom_y,
+                    x_offset, y_offset, d_palette, paletteSize,
+                    max_iterations, d_total_iterations
+            );
+        }
+        else {
+            dimBlock = dim3(32, 32);
+            dimGrid = dim3(
+                    (width + dimBlock.x - 1) / dimBlock.x,
+                    (height + dimBlock.y - 1) / dimBlock.y
+            );
 
-        fractal_rendering<float><<<dimGrid, dimBlock, 0, stream>>>(
-            d_pixels, len, width, height, render_zoom_x, render_zoom_y,
-            x_offset, y_offset, d_palette, paletteSize,
-            max_iterations, d_total_iterations
+            fractal_rendering<float><<<dimGrid, dimBlock, 0, stream>>>(
+                    d_pixels, len, width, height, render_zoom_x, render_zoom_y,
+                    x_offset, y_offset, d_palette, paletteSize,
+                    max_iterations, d_total_iterations
             );
+        }
     }
+    else { // Custom, Formula handling
+
+        void* args[] = {
+                &d_pixels,
+                &len,
+                &width,
+                &height,
+                &render_zoom_x,
+                &render_zoom_y,
+                &x_offset,
+                &y_offset,
+                &d_palette,
+                &paletteSize,
+                &max_iterations,
+                &d_total_iterations
+        };
+
+    }
+
 
     cudaError_t err = cudaGetLastError();
     while (err != cudaSuccess) {

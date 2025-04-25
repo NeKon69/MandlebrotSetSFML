@@ -715,15 +715,12 @@ int main() {
                 }
             }
 
-            if(const auto pResized= event->getIf<sf::Event::Resized>()){
-                sf::Vector2u newWindowSize = pResized->size;
-                renderTarget = sf::RenderTexture(newWindowSize);
-                mandelbrotFractal.set_resolution({int(float(newWindowSize.x) * mandelbrotFractal.get_resolution().x / oldWindowSize.x), int(float(newWindowSize.y) * mandelbrotFractal.get_resolution().y / oldWindowSize.y )});
-                juliaFractal.set_resolution({int(float(newWindowSize.x) * juliaFractal.get_resolution().x / oldWindowSize.x), int(float(newWindowSize.y) * juliaFractal.get_resolution().y / oldWindowSize.y)});
-                juliaFractal.setPosition({float(newWindowSize.x - juliaFractal.get_resolution().x), 0});
+            if (const auto pResized = event->getIf<sf::Event::Resized>()) {
+                // WE AIN'T GOING TO DO RESIZING
+                window.setSize(oldWindowSize);
             }
             else {
-
+                oldWindowSize = window.getSize();
             }
         } // End event loop
 

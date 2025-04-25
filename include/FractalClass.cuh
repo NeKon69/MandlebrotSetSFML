@@ -8,6 +8,8 @@
 #include <random>
 #include <thread>
 #include <atomic>
+#include <nvrtc.h>
+#include <cuda.h>
 
 namespace fractals {
 	struct mandelbrot{};
@@ -67,6 +69,28 @@ struct RenderGuard {
 template <typename Derived>
 class FractalBase : public sf::Transformable, public sf::Drawable {
 protected:
+    // Custom Formula Properties
+    bool custom_formula = false;
+    std::string kernel_code;
+    CUcontext ctx;
+    CUdevice device;
+    CUmodule module;
+    CUfunction kernel;
+    CUdeviceptr cu_len;
+    CUdeviceptr cu_width;
+    CUdeviceptr cu_height;
+    CUdeviceptr cu_render_zoom_x;
+    CUdeviceptr cu_render_zoom_y;
+    CUdeviceptr cu_x_offset;
+    CUdeviceptr cu_y_offset;
+    CUdeviceptr cu_paletteSize;
+    CUdeviceptr cu_max_iterations;
+    CUdeviceptr cu_d_total_iterations;
+    CUdeviceptr cu_d_pixels;
+    CUdeviceptr cu_palette;
+    CUdeviceptr cu_total_iterations;
+
+
 
     // THE MOST IMPORTANT VALUE
     bool isCudaAvailable = false;
@@ -207,6 +231,8 @@ public:
     void post_processing();
 
     void reset();
+
+    void set_custom_formula(std::string formula);
 
     /**
      * @brief CUDA kernel function to calculate and render the fractal given template.
