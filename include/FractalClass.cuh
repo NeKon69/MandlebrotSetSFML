@@ -133,8 +133,8 @@ protected:
     bool is_dragging = false;
 
     // Palette properties
-    sf::Color* d_palette;
-    std::vector<sf::Color> palette;
+    Color* d_palette;
+    std::vector<Color> palette;
     int paletteSize;
 
     // Pixel buffers

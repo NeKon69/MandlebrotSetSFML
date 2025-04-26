@@ -23,7 +23,7 @@ template<typename T>
 __global__ void fractal_rendering(
         unsigned char* pixels, unsigned long size_of_pixels, unsigned int width, unsigned int height,
         T zoom_x, T zoom_y, T x_offset, T y_offset,
-        sf::Color* d_palette, int paletteSize, T maxIterations, unsigned int* d_total_iterations)
+        Color* d_palette, int paletteSize, T maxIterations, unsigned int* d_total_iterations)
 {
 
 
@@ -111,8 +111,8 @@ __global__ void fractal_rendering(
             T t_local = fmodf(float_index, 1.0f);
             if (t_local < 0.0f) t_local += 1.0f;
             
-            sf::Color color1 = getPaletteColor(index1, paletteSize, d_palette);
-            sf::Color color2 = getPaletteColor(index2, paletteSize, d_palette);
+            Color color1 = getPaletteColor(index1, paletteSize, d_palette);
+            Color color2 = getPaletteColor(index2, paletteSize, d_palette);
             
             float r_f = static_cast<float>(color1.r) + t_local * (static_cast<float>(color2.r) - static_cast<float>(color1.r));
             float g_f = static_cast<float>(color1.g) + t_local * (static_cast<float>(color2.g) - static_cast<float>(color1.g));
@@ -136,12 +136,12 @@ __global__ void fractal_rendering(
 template __global__ void fractal_rendering<float>(
         unsigned char*, size_t, unsigned int, unsigned int,
         float, float, float, float,
-        sf::Color*, int, float, unsigned int*);
+        Color*, int, float, unsigned int*);
 
 template __global__ void fractal_rendering<double>(
         unsigned char*, size_t, unsigned int, unsigned int,
         double, double, double, double,
-        sf::Color*, int, double, unsigned int*);
+        Color*, int, double, unsigned int*);
 
 
 //__global__ void fractal_rendering(

@@ -642,13 +642,25 @@ int main() {
                         }
                         break;
                     }
+                    case sf::Keyboard::Scancode::F12:
+                        if (isInMandelbrotArea) {
+                            mandelbrotFractal.set_custom_formula("new_real = 2 * z_real * z_real - z_imag * z_imag + real;\n"
+                                                                 "z_imag =  2 * z_real * z_imag + imag;\n"
+                                                                 "");
+                            needsMandelbrotRender = true;
+                        }
+                        break;
+
                     case sf::Keyboard::Scancode::F11:
-                        const sf::Vector2i fullScreenResolution = {2560, 1440};
+                        sf::Vector2i fullScreenResolution = {2560, 1440};
                         mandelbrotFractal.set_resolution({int(fullScreenResolution.x * mandelbrotFractal.get_resolution().x / window.getSize().x), int(fullScreenResolution.y * mandelbrotFractal.get_resolution().y / window.getSize().y)});
                         juliaFractal.set_resolution({int(fullScreenResolution.x * juliaFractal.get_resolution().x / window.getSize().x), int(fullScreenResolution.y * juliaFractal.get_resolution().y / window.getSize().y)});
                         window.setSize({(unsigned int)(fullScreenResolution.x), (unsigned int)(fullScreenResolution.y)});
                         break;
+
                 }
+
+
             }
 
             if (const auto* mouseWheelEvent = event->getIf<sf::Event::MouseWheelScrolled>()) {

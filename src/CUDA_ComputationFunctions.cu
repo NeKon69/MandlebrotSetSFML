@@ -40,10 +40,10 @@ void HSVtoRGB(double h, double s, double v, unsigned int& r, unsigned int& g, un
  * @brief Creates a color palette using HSV color space and converts it to RGB.
  * The palette is designed to smoothly transition colors for visualization of the Mandelbrot set.
  * @param numColors The number of colors in the palette.
- * @return std::vector<sf::Color> A vector containing the generated color palette.
+ * @return std::vector<Color> A vector containing the generated color palette.
  **/
-std::vector<sf::Color> createHSVPalette(int numColors, double startHue) {
-    std::vector<sf::Color> palette;
+std::vector<Color> createHSVPalette(int numColors, double startHue) {
+    std::vector<Color> palette;
     for (int i = 0; i < numColors; ++i) {
         double t = static_cast<double>(i) / numColors;
         double hue = fmod(startHue + std::pow((t / 0.8), 0.5) * 360.0, 360.0);
@@ -52,13 +52,13 @@ std::vector<sf::Color> createHSVPalette(int numColors, double startHue) {
 
         unsigned int r, g, b;
         HSVtoRGB(hue, saturation, value, r, g, b);
-        palette.push_back(sf::Color(r, g, b, 255));
+        palette.push_back(Color(r, g, b, 255));
     }
     return palette;
 }
 
-std::vector<sf::Color> CreateBlackOWhitePalette(int numColors) {
-    std::vector<sf::Color> palette;
+std::vector<Color> CreateBlackOWhitePalette(int numColors) {
+    std::vector<Color> palette;
     for (int i = 0; i < numColors; ++i) {
         double t = static_cast<double>(i) / (numColors - 1);
         unsigned int r, g, b;
@@ -71,22 +71,22 @@ std::vector<sf::Color> CreateBlackOWhitePalette(int numColors) {
         else {
             r = g = b = static_cast<unsigned int>(128 + 127 * t);
         }
-        palette.push_back(sf::Color(r, g, b, 255));
+        palette.push_back(Color(r, g, b, 255));
     }
     return palette;
 }
 
-std::vector<sf::Color> BluePlusBlackWhitePalette(int numColors) {
-    std::vector<sf::Color> palette;
+std::vector<Color> BluePlusBlackWhitePalette(int numColors) {
+    std::vector<Color> palette;
 
     const double positions[] = { 0.0, 0.16, 0.42, 0.6425, 0.8575, 1.0 };
-    const sf::Color colors[] = {
-        sf::Color(0, 7, 100),
-        sf::Color(32, 107, 203),
-        sf::Color(237, 255, 255),
-        sf::Color(255, 170, 0),
-        sf::Color(0, 2, 0), 
-        sf::Color(0, 7, 100)
+    const Color colors[] = {
+        Color(0, 7, 100),
+        Color(32, 107, 203),
+        Color(237, 255, 255),
+        Color(255, 170, 0),
+        Color(0, 2, 0), 
+        Color(0, 7, 100)
     };
     const int numControlPoints = sizeof(positions) / sizeof(positions[0]);
 
@@ -118,48 +118,48 @@ std::vector<sf::Color> BluePlusBlackWhitePalette(int numColors) {
         g = std::min(std::max(g, 0u), 255u);
         b = std::min(std::max(b, 0u), 255u);
 
-        palette.push_back(sf::Color(r, g, b, 255));
+        palette.push_back(Color(r, g, b, 255));
     }
 
     return palette;
 }
 
-std::vector<sf::Color> CreateOscillatingGrayscalePalette(int numColors, int frequency) {
-    std::vector<sf::Color> palette;
+std::vector<Color> CreateOscillatingGrayscalePalette(int numColors, int frequency) {
+    std::vector<Color> palette;
     for (int i = 0; i < numColors; ++i) {
         double t = static_cast<double>(i) / numColors;
         double value = 0.5 * (1 + sin(2 * 3.14159265358979323846 * frequency * t));
         unsigned int c = static_cast<unsigned int>(value * 255);
-        palette.push_back(sf::Color(c, c, c, 255));
+        palette.push_back(Color(c, c, c, 255));
     }
     return palette;
 }
 
-std::vector<sf::Color> CreateInterpolatedPalette(int numColors) {
-    std::vector<sf::Color> keyColors = {
-        sf::Color(0, 0, 255),
-        sf::Color(0, 255, 0),
-        sf::Color(255, 0, 0)
+std::vector<Color> CreateInterpolatedPalette(int numColors) {
+    std::vector<Color> keyColors = {
+        Color(0, 0, 255),
+        Color(0, 255, 0),
+        Color(255, 0, 0)
     };
     int segments = keyColors.size() - 1;
-    std::vector<sf::Color> palette;
+    std::vector<Color> palette;
     for (int i = 0; i < numColors; ++i) {
         double t = static_cast<double>(i) / (numColors - 1);
         int segment = static_cast<int>(t * segments);
         if (segment >= segments) segment = segments - 1;
         double localT = (t * segments) - segment;
-        sf::Color color1 = keyColors[segment];
-        sf::Color color2 = keyColors[segment + 1];
+        Color color1 = keyColors[segment];
+        Color color2 = keyColors[segment + 1];
         unsigned int r = static_cast<unsigned int>(color1.r + localT * (color2.r - color1.r));
         unsigned int g = static_cast<unsigned int>(color1.g + localT * (color2.g - color1.g));
         unsigned int b = static_cast<unsigned int>(color1.b + localT * (color2.b - color1.b));
-        palette.push_back(sf::Color(r, g, b, 255));
+        palette.push_back(Color(r, g, b, 255));
     }
     return palette;
 }
 
-std::vector<sf::Color> CreatePastelPalette(int numColors) {
-    std::vector<sf::Color> palette;
+std::vector<Color> CreatePastelPalette(int numColors) {
+    std::vector<Color> palette;
     for (int i = 0; i < numColors; ++i) {
         double t = static_cast<double>(i) / numColors;
         double hue = t * 360.0;
@@ -167,14 +167,14 @@ std::vector<sf::Color> CreatePastelPalette(int numColors) {
         double value = 0.7 + 0.3 * cos(2 * 3.14159265358979323846 * t);
         unsigned int r, g, b;
         HSVtoRGB(hue, saturation, value, r, g, b);
-        palette.push_back(sf::Color(r, g, b, 255));
+        palette.push_back(Color(r, g, b, 255));
     }
     return palette;
 }
 
 
-std::vector<sf::Color> CreateFirePalette(int numColors) {
-    std::vector<sf::Color> palette;
+std::vector<Color> CreateFirePalette(int numColors) {
+    std::vector<Color> palette;
     for (int i = 0; i < numColors; ++i) {
         double t = static_cast<double>(i) / (numColors - 1);
         unsigned int r, g, b;
@@ -194,13 +194,13 @@ std::vector<sf::Color> CreateFirePalette(int numColors) {
         else {
             r = g = b = 255;
         }
-        palette.push_back(sf::Color(r, g, b, 255));
+        palette.push_back(Color(r, g, b, 255));
     }
     return palette;
 }
 
-std::vector<sf::Color> CreateWaterPalette(int numColors) {
-    std::vector<sf::Color> palette;
+std::vector<Color> CreateWaterPalette(int numColors) {
+    std::vector<Color> palette;
     for (int i = 0; i < numColors; ++i) {
         double t = static_cast<double>(i) / (numColors - 1);
         unsigned int r, g, b;
@@ -221,13 +221,13 @@ std::vector<sf::Color> CreateWaterPalette(int numColors) {
         else {
             r = g = b = 255;
         }
-        palette.push_back(sf::Color(r, g, b, 255));
+        palette.push_back(Color(r, g, b, 255));
     }
     return palette;
 }
 
-std::vector<sf::Color> CreateCyclicHSVPpalette(int numColors, int cycles) {
-    std::vector<sf::Color> palette;
+std::vector<Color> CreateCyclicHSVPpalette(int numColors, int cycles) {
+    std::vector<Color> palette;
     for (int i = 0; i < numColors; ++i) {
         double t = static_cast<double>(i) / numColors;
         double hue = fmod(t * 360.0 * cycles, 360.0);
@@ -235,25 +235,25 @@ std::vector<sf::Color> CreateCyclicHSVPpalette(int numColors, int cycles) {
         double value = 1.0;
         unsigned int r, g, b;
         HSVtoRGB(hue, saturation, value, r, g, b);
-        palette.push_back(sf::Color(r, g, b, 255));
+        palette.push_back(Color(r, g, b, 255));
     }
     return palette;
 }
 
-std::vector<sf::Color> CreateFractalPatternPalette(int numColors) {
-    std::vector<sf::Color> palette;
+std::vector<Color> CreateFractalPatternPalette(int numColors) {
+    std::vector<Color> palette;
     for (int i = 0; i < numColors; ++i) {
         double t = static_cast<double>(i) / numColors;
         unsigned int r = 255 * (0.5 + 0.5 * sin(20 * t));
         unsigned int g = 255 * (0.5 + 0.5 * sin(30 * t + 2));
         unsigned int b = 255 * (0.5 + 0.5 * sin(40 * t + 4));
-        palette.push_back(sf::Color(r, g, b, 255));
+        palette.push_back(Color(r, g, b, 255));
     }
     return palette;
 }
 
-std::vector<sf::Color> CreatePerlinNoisePalette(int numColors, int seed) {
-    std::vector<sf::Color> palette;
+std::vector<Color> CreatePerlinNoisePalette(int numColors, int seed) {
+    std::vector<Color> palette;
     std::mt19937 gen(seed);
     std::uniform_real_distribution<> noise(-0.1, 0.1);
 
@@ -265,7 +265,7 @@ std::vector<sf::Color> CreatePerlinNoisePalette(int numColors, int seed) {
 
         unsigned int r, g, b;
         HSVtoRGB(hue, sat, val, r, g, b);
-        palette.push_back(sf::Color(r, g, b, 255));
+        palette.push_back(Color(r, g, b, 255));
     }
     return palette;
 }
@@ -275,20 +275,20 @@ std::vector<sf::Color> CreatePerlinNoisePalette(int numColors, int seed) {
  * Transitions through deep blue, purple, pink, orange, yellow, and white,
  * providing a rich and warm color scheme for fractal visualization.
  * @param numColors The number of colors in the palette.
- * @return std::vector<sf::Color> A vector containing the generated sunset palette.
+ * @return std::vector<Color> A vector containing the generated sunset palette.
  */
-std::vector<sf::Color> CreateSunsetPalette(int numColors) {
-    std::vector<sf::Color> palette;
+std::vector<Color> CreateSunsetPalette(int numColors) {
+    std::vector<Color> palette;
 
     const double positions[] = { 0.0, 0.2, 0.4, 0.6, 0.8, 1.0 };
 
-    const sf::Color colors[] = {
-        sf::Color(0, 0, 128),
-        sf::Color(128, 0, 128),
-        sf::Color(255, 105, 180),
-        sf::Color(255, 165, 0),
-        sf::Color(255, 255, 0),
-        sf::Color(255, 255, 255)
+    const Color colors[] = {
+        Color(0, 0, 128),
+        Color(128, 0, 128),
+        Color(255, 105, 180),
+        Color(255, 165, 0),
+        Color(255, 255, 0),
+        Color(255, 255, 255)
     };
     const int numSegments = sizeof(positions) / sizeof(positions[0]) - 1;
 
@@ -301,12 +301,12 @@ std::vector<sf::Color> CreateSunsetPalette(int numColors) {
         if (segment >= numSegments) segment = numSegments - 1;
 
         double tSegment = (t - positions[segment]) / (positions[segment + 1] - positions[segment]);
-        sf::Color color1 = colors[segment];
-        sf::Color color2 = colors[segment + 1];
+        Color color1 = colors[segment];
+        Color color2 = colors[segment + 1];
         unsigned int r = static_cast<unsigned int>(color1.r + tSegment * (color2.r - color1.r));
         unsigned int g = static_cast<unsigned int>(color1.g + tSegment * (color2.g - color1.g));
         unsigned int b = static_cast<unsigned int>(color1.b + tSegment * (color2.b - color1.b));
-        palette.push_back(sf::Color(r, g, b, 255));
+        palette.push_back(Color(r, g, b, 255));
     }
     return palette;
 }
@@ -321,7 +321,7 @@ struct HSVColor {
     float v;
 };
 
-HSVColor RGBtoHSV(const sf::Color& color) {
+HSVColor RGBtoHSV(const Color& color) {
     float r = color.r / 255.0f;
     float g = color.g / 255.0f;
     float b = color.b / 255.0f;
@@ -362,11 +362,11 @@ HSVColor RGBtoHSV(const sf::Color& color) {
     return hsv;
 }
 
-sf::Color HSVtoRGB(const HSVColor& hsv) {
+Color HSVtoRGB(const HSVColor& hsv) {
     float h = hsv.h;
     float s = hsv.s;
     float v = hsv.v;
-    sf::Color rgb;
+    Color rgb;
     rgb.a = 255;
 
     if (s <= 0.0f) {
@@ -407,9 +407,9 @@ float Lerp(float a, float b, float t) {
     return a + t * (b - a);
 }
 
-sf::Color LerpColorRGB(const sf::Color& c1, const sf::Color& c2, float t) {
+Color LerpColorRGB(const Color& c1, const Color& c2, float t) {
     t = std::max(0.0f, std::min(1.0f, t));
-    sf::Color result;
+    Color result;
     result.r = static_cast<unsigned int>(Lerp(static_cast<float>(c1.r), static_cast<float>(c2.r), t));
     result.g = static_cast<unsigned int>(Lerp(static_cast<float>(c1.g), static_cast<float>(c2.g), t));
     result.b = static_cast<unsigned int>(Lerp(static_cast<float>(c1.b), static_cast<float>(c2.b), t));
@@ -417,7 +417,7 @@ sf::Color LerpColorRGB(const sf::Color& c1, const sf::Color& c2, float t) {
     return result;
 }
 
-sf::Color LerpColorHSV(const sf::Color& c1, const sf::Color& c2, float t) {
+Color LerpColorHSV(const Color& c1, const Color& c2, float t) {
     t = std::max(0.0f, std::min(1.0f, t));
     HSVColor hsv1 = RGBtoHSV(c1);
     HSVColor hsv2 = RGBtoHSV(c2);
@@ -437,7 +437,7 @@ sf::Color LerpColorHSV(const sf::Color& c1, const sf::Color& c2, float t) {
     resultHSV.v = Lerp(hsv1.v, hsv2.v, t);
 
     unsigned int alpha = static_cast<unsigned int>(Lerp(static_cast<float>(c1.a), static_cast<float>(c2.a), t));
-    sf::Color resultRGB = HSVtoRGB(resultHSV);
+    Color resultRGB = HSVtoRGB(resultHSV);
     resultRGB.a = alpha;
 
     return resultRGB;
@@ -450,16 +450,16 @@ float Smoothstep(float edge0, float edge1, float x) {
 
 struct ColorNode {
     float position;
-    sf::Color color;
+    Color color;
 };
 
-sf::Color GetColorFromNodes(float t, const std::vector<ColorNode>& nodes,
-    std::function<sf::Color(const sf::Color&, const sf::Color&, float)> interpolator)
+Color GetColorFromNodes(float t, const std::vector<ColorNode>& nodes,
+    std::function<Color(const Color&, const Color&, float)> interpolator)
 {
     t = std::max(0.0f, std::min(1.0f, t));
 
     if (nodes.empty()) {
-        return sf::Color::Black;
+        return Color{0, 0, 0, 255};
     }
     if (nodes.size() == 1 || t <= nodes.front().position) {
         return nodes.front().color;
@@ -478,11 +478,11 @@ sf::Color GetColorFromNodes(float t, const std::vector<ColorNode>& nodes,
     return nodes.back().color;
 }
 
-std::vector<sf::Color> CreatePsychedelicWavePalette(int numColors, float freqH, float freqS, float freqV) {
+std::vector<Color> CreatePsychedelicWavePalette(int numColors, float freqH, float freqS, float freqV) {
     if (numColors <= 0) return {};
-    std::vector<sf::Color> palette(numColors);
+    std::vector<Color> palette(numColors);
     if (numColors == 1) {
-        palette[0] = sf::Color::Magenta;
+        palette[0] = Color(253,61,181);
         return palette;
     }
 
@@ -512,22 +512,22 @@ std::vector<sf::Color> CreatePsychedelicWavePalette(int numColors, float freqH, 
     return palette;
 }
 
-std::vector<sf::Color> CreateIceCavePalette(int numColors) {
+std::vector<Color> CreateIceCavePalette(int numColors) {
     if (numColors <= 0) return {};
-    std::vector<sf::Color> palette(numColors);
+    std::vector<Color> palette(numColors);
     if (numColors == 1) {
-        palette[0] = sf::Color(200, 240, 255);
+        palette[0] = Color(200, 240, 255);
         return palette;
     }
 
     std::vector<ColorNode> nodes = {
-        {0.0f,  sf::Color(255, 255, 255)},
-        {0.2f,  sf::Color(210, 245, 255)},
-        {0.4f,  sf::Color(150, 220, 255)},
-        {0.6f,  sf::Color(100, 180, 240)},
-        {0.75f, sf::Color(120, 170, 250)},
-        {0.9f,  sf::Color(80, 150, 220)},
-        {1.0f,  sf::Color(50, 100, 180)}
+        {0.0f,  Color(255, 255, 255)},
+        {0.2f,  Color(210, 245, 255)},
+        {0.4f,  Color(150, 220, 255)},
+        {0.6f,  Color(100, 180, 240)},
+        {0.75f, Color(120, 170, 250)},
+        {0.9f,  Color(80, 150, 220)},
+        {1.0f,  Color(50, 100, 180)}
     };
 
     std::sort(nodes.begin(), nodes.end(), [](const ColorNode& a, const ColorNode& b) {
@@ -548,22 +548,22 @@ std::vector<sf::Color> CreateIceCavePalette(int numColors) {
     return palette;
 }
 
-std::vector<sf::Color> CreateAccretionDiskPalette(int numColors, float power) {
+std::vector<Color> CreateAccretionDiskPalette(int numColors, float power) {
     if (numColors <= 0) return {};
-    std::vector<sf::Color> palette(numColors);
+    std::vector<Color> palette(numColors);
     if (numColors == 1) {
-        palette[0] = sf::Color(180, 0, 0);
+        palette[0] = Color(180, 0, 0);
         return palette;
     }
 
     std::vector<ColorNode> nodes = {
-        {0.0f,  sf::Color(0, 0, 0)}, 
-        {0.3f,  sf::Color(180, 0, 0)},
-        {0.6f,  sf::Color(200, 40, 0)},
-        {0.8f,  sf::Color(255, 120, 30)},
-        {0.9f,  sf::Color(255, 200, 100)},
-        {0.97f, sf::Color(255, 255, 220)},
-        {1.0f,  sf::Color(220, 240, 255)}
+        {0.0f,  Color(0, 0, 0)}, 
+        {0.3f,  Color(180, 0, 0)},
+        {0.6f,  Color(200, 40, 0)},
+        {0.8f,  Color(255, 120, 30)},
+        {0.9f,  Color(255, 200, 100)},
+        {0.97f, Color(255, 255, 220)},
+        {1.0f,  Color(220, 240, 255)}
     };
 
     std::sort(nodes.begin(), nodes.end(), [](const ColorNode& a, const ColorNode& b) {
@@ -593,23 +593,23 @@ std::vector<sf::Color> CreateAccretionDiskPalette(int numColors, float power) {
 }
 
 
-std::vector<sf::Color> CreateElectricNebulaPalette(int numColors) {
+std::vector<Color> CreateElectricNebulaPalette(int numColors) {
     if (numColors <= 0) return {};
-    std::vector<sf::Color> palette(numColors);
+    std::vector<Color> palette(numColors);
     if (numColors == 1) {
-        palette[0] = sf::Color(20, 0, 40);
+        palette[0] = Color(20, 0, 40);
         return palette;
     }
 
     std::vector<ColorNode> nodes = {
-        {0.0f,  sf::Color(30, 15, 50)},
-        {0.25f, sf::Color(80, 80, 150)},
-        {0.5f,  sf::Color(50, 150, 220)},
-        {0.65f, sf::Color(150, 50, 200)},
-        {0.75f, sf::Color(255, 0, 255)},
-        {0.85f, sf::Color(200, 255, 50)},
-        {0.95f, sf::Color(255, 200, 150)},
-        {1.0f,  sf::Color(255, 255, 200)}
+        {0.0f,  Color(30, 15, 50)},
+        {0.25f, Color(80, 80, 150)},
+        {0.5f,  Color(50, 150, 220)},
+        {0.65f, Color(150, 50, 200)},
+        {0.75f, Color(255, 0, 255)},
+        {0.85f, Color(200, 255, 50)},
+        {0.95f, Color(255, 200, 150)},
+        {1.0f,  Color(255, 255, 200)}
     };
 
     std::sort(nodes.begin(), nodes.end(), [](const ColorNode& a, const ColorNode& b) {
@@ -644,25 +644,25 @@ std::vector<sf::Color> CreateElectricNebulaPalette(int numColors) {
 }
 
 
-std::vector<sf::Color> CreateDeepSpaceWideVeinsPalette(int numColors) {
+std::vector<Color> CreateDeepSpaceWideVeinsPalette(int numColors) {
     if (numColors <= 0) return {};
-    std::vector<sf::Color> palette(numColors);
+    std::vector<Color> palette(numColors);
     if (numColors == 1) {
-        palette[0] = sf::Color(10, 0, 20);
+        palette[0] = Color(10, 0, 20);
         return palette;
     }
 
     std::vector<ColorNode> nodes = {
-        {0.0f,  sf::Color(20, 0, 40)},
-        {0.15f, sf::Color(50, 10, 80)},
-        {0.3f,  sf::Color(80, 30, 100)},
-        {0.5f,  sf::Color(40, 10, 60)},
-        {0.6f,  sf::Color(0, 200, 200)},
-        {0.7f,  sf::Color(80, 150, 200)},
-        {0.8f,  sf::Color(30, 5, 50)},
-        {0.85f, sf::Color(255, 50, 255)},
-        {0.92f, sf::Color(200, 100, 200)},
-        {1.0f,  sf::Color(20, 0, 40)}
+        {0.0f,  Color(20, 0, 40)},
+        {0.15f, Color(50, 10, 80)},
+        {0.3f,  Color(80, 30, 100)},
+        {0.5f,  Color(40, 10, 60)},
+        {0.6f,  Color(0, 200, 200)},
+        {0.7f,  Color(80, 150, 200)},
+        {0.8f,  Color(30, 5, 50)},
+        {0.85f, Color(255, 50, 255)},
+        {0.92f, Color(200, 100, 200)},
+        {1.0f,  Color(20, 0, 40)}
     };
 
     for (int i = 0; i < numColors; ++i) {
@@ -671,14 +671,14 @@ std::vector<sf::Color> CreateDeepSpaceWideVeinsPalette(int numColors) {
         palette[i] = GetColorFromNodes(nonLinearT, nodes, LerpColorHSV);
 
         if (rand() / (float)RAND_MAX < 0.02f && i > numColors / 4) {
-            palette[i] = sf::Color(255, 255, 255, 200);
+            palette[i] = Color(255, 255, 255, 200);
         }
     }
 
     return palette;
 }
 
-std::vector<sf::Color> CreateRandomPalette(int numColors) {
+std::vector<Color> CreateRandomPalette(int numColors) {
     if (numColors <= 0) return {};
 
     std::random_device rd;
@@ -706,7 +706,7 @@ std::vector<sf::Color> CreateRandomPalette(int numColors) {
     float baseV = baseDist(gen);
     float ampV = ampDist(gen);
 
-    std::vector<sf::Color> palette(numColors);
+    std::vector<Color> palette(numColors);
     if (numColors == 1) {
         float h = fmod(baseH + ampH * std::sin(phaseH) + 360.0f, 360.0f);
         float s = std::max(0.0f, std::min(1.0f, baseS + ampS * std::sin(phaseS)));
