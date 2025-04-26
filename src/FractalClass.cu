@@ -35,7 +35,7 @@
   CUDA_SAFE_CALL(cuMemcpyHtoD(cu_devPtr, &hostVar, sizeof(type))) \
 
 void cpu_render_mandelbrot(render_target target, unsigned char* pixels, unsigned int width, unsigned int height, double zoom_x, double zoom_y,
-    double x_offset, double y_offset, sf::Color* palette, unsigned int paletteSize,
+    double x_offset, double y_offset, Color* palette, unsigned int paletteSize,
     unsigned int max_iterations, unsigned int* total_iterations, std::atomic<unsigned char>& finish_flag
     )
 {
@@ -103,8 +103,8 @@ void cpu_render_mandelbrot(render_target target, unsigned char* pixels, unsigned
                     double t_local = fmodf(float_index, 1.0f);
                     if (t_local < 0.0f) t_local += 1.0f;
 
-                    sf::Color color1 = getPaletteColor(index1, paletteSize, palette);
-                    sf::Color color2 = getPaletteColor(index2, paletteSize, palette);
+                    Color color1 = getPaletteColor(index1, paletteSize, palette);
+                    Color color2 = getPaletteColor(index2, paletteSize, palette);
 
                     float r_f = static_cast<float>(color1.r) + t_local * (static_cast<float>(color2.r) - static_cast<float>(color1.r));
                     float g_f = static_cast<float>(color1.g) + t_local * (static_cast<float>(color2.g) - static_cast<float>(color1.g));
@@ -148,9 +148,6 @@ FractalBase<Derived>::FractalBase()
     disX(-2.f, 2.f), disY(-1.5f, 1.5f),
     disVelX(-0.13f, 0.13f),disVelY(-0.1f, 0.1f)
 {
-    cuInit(0);
-    cuDeviceGet(&device, 0);
-    cuCtxCreate(&ctx, 0, device);
     isCudaAvailable = true;
     int numDevices;
     cudaGetDeviceCount(&numDevices);
@@ -196,32 +193,6 @@ FractalBase<Derived>::FractalBase()
     cudaStreamCreate(&dataStream);
 
     iterationpoints.resize(max_iterations);
-
-
-    cu_d_pixels = (CUdeviceptr)d_pixels;
-    cu_palette = (CUdeviceptr)d_palette;
-    cu_total_iterations = (CUdeviceptr)d_total_iterations;
-
-    size_t len = width * height;
-    CUDA_SAFE_CALL(cuMemAlloc(&cu_len, sizeof(size_t)));
-    CUDA_SAFE_CALL(cuMemcpyHtoD(cu_len, &len, sizeof(size_t)));
-    CUDA_SAFE_CALL(cuMemAlloc(&cu_width, sizeof(width)));
-    CUDA_SAFE_CALL(cuMemcpyHtoD(cu_width, &width, sizeof(width)));
-
-    CUDA_SAFE_CALL(cuMemAlloc(&cu_height, sizeof(height)));
-    CUDA_SAFE_CALL(cuMemcpyHtoD(cu_height, &height, sizeof(height)));
-
-    CUDA_SAFE_CALL(cuMemAlloc(&cu_x_offset, sizeof(x_offset)));
-    CUDA_SAFE_CALL(cuMemcpyHtoD(cu_x_offset, &x_offset, sizeof(x_offset)));
-
-    CUDA_SAFE_CALL(cuMemAlloc(&cu_y_offset, sizeof(y_offset)));
-    CUDA_SAFE_CALL(cuMemcpyHtoD(cu_y_offset, &y_offset, sizeof(y_offset)));
-
-    CUDA_SAFE_CALL(cuMemAlloc(&cu_paletteSize, sizeof(paletteSize)));
-    CUDA_SAFE_CALL(cuMemcpyHtoD(cu_paletteSize, &paletteSize, sizeof(paletteSize)));
-
-    CUDA_SAFE_CALL(cuMemAlloc(&cu_max_iterations, sizeof(max_iterations)));
-    CUDA_SAFE_CALL(cuMemcpyHtoD(cu_max_iterations, &max_iterations, sizeof(max_iterations)));
 }
 
 template <typename Derived>
@@ -565,21 +536,54 @@ void FractalBase<Derived>::reset() {
 /// z_imag =  2 * z_real * z_imag + imag;
 template <>
 void FractalBase<fractals::mandelbrot>::set_custom_formula(const std::string formula) {
+    if(!custom_formula) {
+        cuInit(0);
+        cuDeviceGet(&device, 0);
+        cuCtxCreate(&ctx, 0, device);
+
+        cu_d_pixels = (CUdeviceptr)d_pixels;
+        cu_palette = (CUdeviceptr)d_palette;
+        cu_total_iterations = (CUdeviceptr)d_total_iterations;
+
+        size_t len = width * height;
+        CUDA_SAFE_CALL(cuMemAlloc(&cu_len, sizeof(size_t)));
+        CUDA_SAFE_CALL(cuMemcpyHtoD(cu_len, &len, sizeof(size_t)));
+        CUDA_SAFE_CALL(cuMemAlloc(&cu_width, sizeof(width)));
+        CUDA_SAFE_CALL(cuMemcpyHtoD(cu_width, &width, sizeof(width)));
+
+        CUDA_SAFE_CALL(cuMemAlloc(&cu_height, sizeof(height)));
+        CUDA_SAFE_CALL(cuMemcpyHtoD(cu_height, &height, sizeof(height)));
+
+        CUDA_SAFE_CALL(cuMemAlloc(&cu_x_offset, sizeof(x_offset)));
+        CUDA_SAFE_CALL(cuMemcpyHtoD(cu_x_offset, &x_offset, sizeof(x_offset)));
+
+        CUDA_SAFE_CALL(cuMemAlloc(&cu_y_offset, sizeof(y_offset)));
+        CUDA_SAFE_CALL(cuMemcpyHtoD(cu_y_offset, &y_offset, sizeof(y_offset)));
+
+        CUDA_SAFE_CALL(cuMemAlloc(&cu_paletteSize, sizeof(paletteSize)));
+        CUDA_SAFE_CALL(cuMemcpyHtoD(cu_paletteSize, &paletteSize, sizeof(paletteSize)));
+
+        CUDA_SAFE_CALL(cuMemAlloc(&cu_max_iterations, sizeof(max_iterations)));
+        CUDA_SAFE_CALL(cuMemcpyHtoD(cu_max_iterations, &max_iterations, sizeof(max_iterations)));
+    }
+
+
     kernel_code = R"(
-template<typename T>
-__global__ void fractal_rendering(
+#include "../include/fractals/custom.cuh"
+
+extern "C" __global__ void fractal_rendering(
         unsigned char* pixels, unsigned long size_of_pixels, unsigned int width, unsigned int height,
-        T zoom_x, T zoom_y, T x_offset, T y_offset,
-        sf::Color* d_palette, int paletteSize, T maxIterations, unsigned int* d_total_iterations)
-{
-
-
-    const unsigned int x =   blockIdx.x * blockDim.x + threadIdx.x;
-    const unsigned int y =   blockIdx.y * blockDim.y + threadIdx.y;
-    const unsigned int id = threadIdx.y * blockDim.x + threadIdx.x;
-
-    if (x == 0 && y == 0) {
-        *d_total_iterations = 0;
+        float zoom_x, float zoom_y, float x_offset, float y_offset,
+        sf::Color* d_palette, int paletteSize, float maxIterations, unsigned int* d_total_iterations)
+{                                                                                                           /n/
+                                                                                                            /n/
+                                                                                                            /n/
+    const unsigned int x =   blockIdx.x * blockDim.x + threadIdx.x;                                         /n/
+    const unsigned int y =   blockIdx.y * blockDim.y + threadIdx.y;                                         /n/
+    const unsigned int id = threadIdx.y * blockDim.x + threadIdx.x;                                         /n/
+                                                                                                            /n/
+    if (x == 0 && y == 0) {                                                                                 /n/
+        *d_total_iterations = 0;                                                                            /n/
     }
 
     const size_t expected_size = width * height * 4;
@@ -680,21 +684,89 @@ __global__ void fractal_rendering(
 }
 )";
     custom_formula = true;
-    const std::ifstream header_file("custom.cuh");
-    std::stringstream buffer;
-    buffer << header_file.rdbuf();
-    const std::string header_content = buffer.str();
-
-    const char *header_data = header_content.c_str();
-    constexpr char *header_name = "../include/custom.cuh";
-    const char *headers[] = {header_data};
-    constexpr char *includeNames[] = {header_name};
-
-
     nvrtcProgram prog;
-    NVRTC_SAFE_CALL(nvrtcCreateProgram(&prog, kernel_code.c_str(), "custom.cu", 1, headers, includeNames));
-    constexpr char *opts[] = {"--gpu-architecture=compute_75"};
-    nvrtcResult compileResult = nvrtcCompileProgram(prog, 1, opts);
+    nvrtcResult compileResult;
+    try {
+        const std::ifstream header_file("../include/fractals/custom.cuh");
+        if (!header_file.is_open()) {
+            throw std::runtime_error("Could not open header file: custom.cuh");
+        }
+
+        std::stringstream buffer;
+        buffer << header_file.rdbuf();
+        const std::string header_content = buffer.str();
+
+        const char *header_data = header_content.c_str();
+        constexpr char *header_name = "custom.cuh";
+        const char *headers[] = {header_data};
+        const char *includeNames[] = {header_name};
+
+        NVRTC_SAFE_CALL(nvrtcCreateProgram(&prog, kernel_code.c_str(), "custom.cu", 1, headers, includeNames));
+
+        std::vector<const char*> compile_options;
+
+        const char* vcpkg_root = std::getenv("VCPKG_ROOT");
+        if (vcpkg_root == nullptr) {
+            std::cerr << "Warning: VCPKG_ROOT environment variable not set. Assuming a default." << std::endl;
+            vcpkg_root = "/home/progamers/vcpkg";
+        }
+
+        const std::string triplet = "x64-linux";
+
+        std::string sfml_include_path = "-I" + std::string(vcpkg_root) + "/installed/" + triplet + "/include";
+        compile_options.push_back(sfml_include_path.c_str());
+
+        // **ADD BOTH SYSTEM INCLUDE PATHS:**
+        std::string system_include_path1 = "-I/usr/include/c++/14.2.1";
+        compile_options.push_back(system_include_path1.c_str());
+
+        std::string system_include_path2 = "-I/usr/include/c++/14.2.1/x86_64-pc-linux-gnu";
+        compile_options.push_back(system_include_path2.c_str());
+
+        compile_options.push_back("--gpu-architecture=compute_75");
+
+        const char** opts = compile_options.data();
+        int num_opts = compile_options.size();
+
+        compileResult = nvrtcCompileProgram(prog, num_opts, opts);
+
+    } catch (const std::exception& e) {
+        std::cerr << "Exception in NVRTC setup/compilation: " << e.what() << std::endl;
+        if (prog) {
+            nvrtcDestroyProgram(&prog);
+        }
+        throw;
+    }
+
+    size_t logSize = 0;
+    NVRTC_SAFE_CALL(nvrtcGetProgramLogSize(prog, &logSize));
+
+    std::string log;
+    if (logSize > 1) {
+        log.resize(logSize);
+        NVRTC_SAFE_CALL(nvrtcGetProgramLog(prog, &log[0]));
+    }
+
+    if (compileResult != NVRTC_SUCCESS) {
+        std::cerr << "---------------------\n";
+        std::cerr << "NVRTC Compilation Failed:\n";
+        std::cerr << "Result Code: " << nvrtcGetErrorString(compileResult) << "\n";
+        std::cerr << "---------------------\n";
+        std::cerr << "Compilation Log:\n";
+        std::cerr << log << std::endl;
+        std::cerr << "---------------------\n";
+
+        nvrtcDestroyProgram(&prog);
+        return;
+    } else {
+        std::cout << "NVRTC Compilation Succeeded.\n";
+        if (!log.empty() && log.length() > 1) {
+            std::cout << "---------------------\n";
+            std::cout << "Compilation Log (Warnings/Info):\n";
+            std::cout << log << std::endl;
+            std::cout << "---------------------\n";
+        }
+    }
 
     size_t ptxSize = 0;
     NVRTC_SAFE_CALL(nvrtcGetPTXSize(prog, &ptxSize));
@@ -897,20 +969,42 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
     }
     else { // Custom, Formula handling
 
+        dimBlock = dim3(32, 32);
+        dimGrid = dim3(
+                (width + dimBlock.x - 1) / dimBlock.x,
+                (height + dimBlock.y - 1) / dimBlock.y
+        );
+
+        cuMemcpyHtoDAsync(cu_len, &len, sizeof(size_t), stream);
+        cuMemcpyHtoDAsync(cu_width, &width, sizeof(width), stream);
+        cuMemcpyHtoDAsync(cu_height, &height, sizeof(height), stream);
+        cuMemcpyHtoDAsync(cu_x_offset, &x_offset, sizeof(x_offset), stream);
+        cuMemcpyHtoDAsync(cu_y_offset, &y_offset, sizeof(y_offset), stream);
+        cuMemcpyHtoDAsync(cu_paletteSize, &paletteSize, sizeof(paletteSize), stream);
+        cuMemcpyHtoDAsync(cu_max_iterations, &max_iterations, sizeof(max_iterations), stream);
+        cuMemcpyHtoDAsync(cu_render_zoom_x, &render_zoom_x, sizeof(render_zoom_x), stream);
+        cuMemcpyHtoDAsync(cu_render_zoom_y, &render_zoom_y, sizeof(render_zoom_y), stream);
+
         void* args[] = {
-                &d_pixels,
-                &len,
-                &width,
-                &height,
-                &render_zoom_x,
-                &render_zoom_y,
-                &x_offset,
-                &y_offset,
-                &d_palette,
-                &paletteSize,
-                &max_iterations,
-                &d_total_iterations
+                &cu_d_pixels,
+                &cu_len,
+                &cu_width,
+                &cu_height,
+                &cu_render_zoom_x,
+                &cu_render_zoom_y,
+                &cu_x_offset,
+                &cu_y_offset,
+                &cu_palette,
+                &cu_paletteSize,
+                &cu_max_iterations,
+                &cu_d_total_iterations
         };
+
+        CUDA_SAFE_CALL(cuLaunchKernel(kernel,
+                dimGrid.x, dimGrid.y, 1,
+                dimBlock.x, dimBlock.y, 1,
+                0, stream,
+                args, nullptr));
 
     }
 
