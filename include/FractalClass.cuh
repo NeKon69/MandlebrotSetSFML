@@ -43,6 +43,11 @@ enum class render_state {
     best
 };
 
+enum class context_type {
+    CUDA,
+    NVRTC
+};
+
 struct timelapse_propertier {
     float zx = 0, zy = 0;
     float velocityX = 0, velocityY = 0;
@@ -70,25 +75,19 @@ template <typename Derived>
 class FractalBase : public sf::Transformable, public sf::Drawable {
 protected:
     // Custom Formula Properties
+    context_type context = context_type::CUDA;
     bool custom_formula = false;
     std::string kernel_code;
     CUcontext ctx;
     CUdevice device;
     CUmodule module;
-    CUfunction kernel;
-    CUdeviceptr cu_len;
-    CUdeviceptr cu_width;
-    CUdeviceptr cu_height;
-    CUdeviceptr cu_render_zoom_x;
-    CUdeviceptr cu_render_zoom_y;
-    CUdeviceptr cu_x_offset;
-    CUdeviceptr cu_y_offset;
-    CUdeviceptr cu_paletteSize;
-    CUdeviceptr cu_max_iterations;
+    CUfunction kernelFloat;
+    CUfunction kernelDouble;
+    CUfunction kernelAntialiasing;
     CUdeviceptr cu_d_total_iterations;
     CUdeviceptr cu_d_pixels;
     CUdeviceptr cu_palette;
-    CUdeviceptr cu_total_iterations;
+    CUdeviceptr CUssaa_buffer;
 
 
 
@@ -203,6 +202,7 @@ public:
      * @returns mouse currently dragging state
      * */
     bool get_is_dragging();
+    bool get_bool_custom_formula();
 
     double get_x_offset();
     double get_y_offset();

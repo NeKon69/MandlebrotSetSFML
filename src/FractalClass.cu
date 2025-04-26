@@ -29,10 +29,20 @@
     }                                                             \
 } while(0)
 
-#define ALLOC_AND_COPY_TO_DEVICE_CU(cu_devPtr, hostVar, type)     \
-  CUdeviceptr cu_devPtr;                                          \
-  CUDA_SAFE_CALL(cuMemAlloc(&cu_devPtr, sizeof(type)));           \
-  CUDA_SAFE_CALL(cuMemcpyHtoD(cu_devPtr, &hostVar, sizeof(type))) \
+#define ALLOC_AND_COPY_TO_DEVICE_CU(cu_devPtr, hostVar, type, num)          \
+  CUDA_SAFE_CALL(cuMemAlloc(&cu_devPtr, sizeof(type) * num));               \
+  CUDA_SAFE_CALL(cuMemcpyHtoD(cu_devPtr, &hostVar, sizeof(type) * num));
+
+#define MAKE_CURR_CONTEXT_OPERATION(x, y, ctx)                      \
+  do {                                                              \
+    if (context = context_type::CUDA){                              \
+      CUDA_SAFE_CALL(x)                                             \
+    }                                                               \
+    else{                                                           \
+      CUDA_SAFE_CALL(y)                                             \
+    }                                                               \
+} while(0)
+
 
 void cpu_render_mandelbrot(render_target target, unsigned char* pixels, unsigned int width, unsigned int height, double zoom_x, double zoom_y,
     double x_offset, double y_offset, Color* palette, unsigned int paletteSize,
@@ -148,6 +158,10 @@ FractalBase<Derived>::FractalBase()
     disX(-2.f, 2.f), disY(-1.5f, 1.5f),
     disVelX(-0.13f, 0.13f),disVelY(-0.1f, 0.1f)
 {
+    if(std::is_same<Derived, fractals::julia>::value){
+        return;
+    }
+
     isCudaAvailable = true;
     int numDevices;
     cudaGetDeviceCount(&numDevices);
@@ -384,6 +398,7 @@ void FractalBase<Derived>::set_resolution(sf::Vector2i target_resolution) {
     y_offset = center_y - (height / (zoom_y * zoom_scale)) / 2.0;
 
 
+
     cudaFree(d_pixels);
     cudaFreeHost(pixels);
     cudaFree(ssaa_buffer);
@@ -416,22 +431,41 @@ void FractalBase<Derived>::post_processing() {
             (width + dimBlock.x - 1) / dimBlock.x,
             (height + dimBlock.y - 1) / dimBlock.y
         );
+        if(!custom_formula){
+            ANTIALIASING_SSAA4<<<dimGrid, dimBlock, 0, stream>>>(d_pixels, ssaa_buffer, basic_width * 2, basic_height * 2, basic_width, basic_height);
+            cudaMemcpyAsync(compressed, ssaa_buffer, width * height * 4 * sizeof(std::uint8_t), cudaMemcpyDeviceToHost, stream);
+            cudaStreamSynchronize(stream);
+        }
+        else {
+            void* params[] = { &cu_d_pixels, &CUssaa_buffer, &width, &height, &basic_width, &basic_height };
+            cuLaunchKernel(kernelAntialiasing,
+                    dimGrid.x, dimGrid.y, 1,
+                    dimBlock.x, dimBlock.y, 1,
+                    0,
+                    nullptr,
+                    params,
+                    nullptr
+                    );
+            cuMemcpyDtoHAsync(compressed, CUssaa_buffer, width * height * 4 * sizeof(std::uint8_t), stream);
+            cuStreamSynchronize(stream);
+        }
 
-        auto start = std::chrono::high_resolution_clock::now();
-        ANTIALIASING_SSAA4<<<dimGrid, dimBlock, 0, stream>>>(d_pixels, ssaa_buffer, basic_width * 2, basic_height * 2, basic_width, basic_height);
-        auto end = std::chrono::high_resolution_clock::now();
-        cudaMemcpyAsync(compressed, ssaa_buffer, width * height * 4 * sizeof(std::uint8_t), cudaMemcpyDeviceToHost, stream);
-
-        cudaStreamSynchronize(stream);
         image.resize({ basic_width, basic_height }, compressed);
     }
     else {
         cudaEventRecord(stop_rendering, stream);
-        cudaMemcpyAsync(pixels, d_pixels, width * height * 4 * sizeof(std::uint8_t), cudaMemcpyDeviceToHost, stream);
-        cudaMemcpyAsync(h_total_iterations, d_total_iterations, sizeof(int), cudaMemcpyDeviceToHost, dataStream);
-        cudaError_t status = cudaEventQuery(stop_rendering);
-        // THERE AIN'T NO WAY I AM DOING THAT SYNC LOGIC, JUST LET IT BE
-        cudaStreamSynchronize(stream);
+        if(custom_formula) {
+            cuMemcpyDtoHAsync(pixels, cu_d_pixels, sizeof(std::uint8_t) * width * 2 * height * 2 * 4, stream);
+            cuMemcpyDtoHAsync(h_total_iterations, cu_d_total_iterations, sizeof(int), dataStream);
+            cuStreamSynchronize(stream);
+        }
+        else {
+            cudaMemcpyAsync(pixels, d_pixels, width * height * 4 * sizeof(std::uint8_t), cudaMemcpyDeviceToHost, stream);
+            cudaMemcpyAsync(h_total_iterations, d_total_iterations, sizeof(int), cudaMemcpyDeviceToHost, dataStream);
+            cudaError_t status = cudaEventQuery(stop_rendering);
+            // THERE AIN'T NO WAY I AM DOING THAT SYNC LOGIC, JUST LET IT BE
+            cudaStreamSynchronize(stream);
+        }
         hardness_coeff = *h_total_iterations / (width * height * 1.0);
         image.resize({ basic_width, basic_height }, pixels);
     }
@@ -541,49 +575,28 @@ void FractalBase<fractals::mandelbrot>::set_custom_formula(const std::string for
         cuDeviceGet(&device, 0);
         cuCtxCreate(&ctx, 0, device);
 
-        cu_d_pixels = (CUdeviceptr)d_pixels;
-        cu_palette = (CUdeviceptr)d_palette;
-        cu_total_iterations = (CUdeviceptr)d_total_iterations;
-
-        size_t len = width * height;
-        CUDA_SAFE_CALL(cuMemAlloc(&cu_len, sizeof(size_t)));
-        CUDA_SAFE_CALL(cuMemcpyHtoD(cu_len, &len, sizeof(size_t)));
-        CUDA_SAFE_CALL(cuMemAlloc(&cu_width, sizeof(width)));
-        CUDA_SAFE_CALL(cuMemcpyHtoD(cu_width, &width, sizeof(width)));
-
-        CUDA_SAFE_CALL(cuMemAlloc(&cu_height, sizeof(height)));
-        CUDA_SAFE_CALL(cuMemcpyHtoD(cu_height, &height, sizeof(height)));
-
-        CUDA_SAFE_CALL(cuMemAlloc(&cu_x_offset, sizeof(x_offset)));
-        CUDA_SAFE_CALL(cuMemcpyHtoD(cu_x_offset, &x_offset, sizeof(x_offset)));
-
-        CUDA_SAFE_CALL(cuMemAlloc(&cu_y_offset, sizeof(y_offset)));
-        CUDA_SAFE_CALL(cuMemcpyHtoD(cu_y_offset, &y_offset, sizeof(y_offset)));
-
-        CUDA_SAFE_CALL(cuMemAlloc(&cu_paletteSize, sizeof(paletteSize)));
-        CUDA_SAFE_CALL(cuMemcpyHtoD(cu_paletteSize, &paletteSize, sizeof(paletteSize)));
-
-        CUDA_SAFE_CALL(cuMemAlloc(&cu_max_iterations, sizeof(max_iterations)));
-        CUDA_SAFE_CALL(cuMemcpyHtoD(cu_max_iterations, &max_iterations, sizeof(max_iterations)));
+        CUDA_SAFE_CALL(cuMemAlloc(&cu_d_pixels, sizeof(unsigned char) * width * 2 * height * 2 * 4));
+        ALLOC_AND_COPY_TO_DEVICE_CU(cu_d_total_iterations, max_iterations, unsigned int, 1);
+        CUDA_SAFE_CALL(cuMemAlloc(&cu_palette, sizeof(Color) * paletteSize));
+        CUDA_SAFE_CALL(cuMemcpyHtoD(cu_palette, palette.data(), sizeof(Color) * paletteSize));
+        CUDA_SAFE_CALL(cuMemAlloc(&CUssaa_buffer, sizeof(unsigned char) * width * 2 * height * 2 * 4));
+        CUDA_SAFE_CALL(cuMemcpyHtoD(cu_d_pixels, pixels, sizeof(unsigned char) * width * 2 * height * 2 * 4));
     }
 
 
     kernel_code = R"(
 #include "../include/fractals/custom.cuh"
-
-extern "C" __global__ void fractal_rendering(
+template <typename T>
+__global__ void fractal_rendering(
         unsigned char* pixels, unsigned long size_of_pixels, unsigned int width, unsigned int height,
-        float zoom_x, float zoom_y, float x_offset, float y_offset,
-        sf::Color* d_palette, int paletteSize, float maxIterations, unsigned int* d_total_iterations)
-{                                                                                                           /n/
-                                                                                                            /n/
-                                                                                                            /n/
-    const unsigned int x =   blockIdx.x * blockDim.x + threadIdx.x;                                         /n/
-    const unsigned int y =   blockIdx.y * blockDim.y + threadIdx.y;                                         /n/
-    const unsigned int id = threadIdx.y * blockDim.x + threadIdx.x;                                         /n/
-                                                                                                            /n/
-    if (x == 0 && y == 0) {                                                                                 /n/
-        *d_total_iterations = 0;                                                                            /n/
+        T zoom_x, T zoom_y, T x_offset, T y_offset,
+        Color* d_palette, int paletteSize, T maxIterations, unsigned int* d_total_iterations)
+{
+    const unsigned int x =   blockIdx.x * blockDim.x + threadIdx.x;
+    const unsigned int y =   blockIdx.y * blockDim.y + threadIdx.y;
+    const unsigned int id = threadIdx.y * blockDim.x + threadIdx.x;
+    if (x == 0 && y == 0) {
+        *d_total_iterations = 0;
     }
 
     const size_t expected_size = width * height * 4;
@@ -601,7 +614,7 @@ extern "C" __global__ void fractal_rendering(
         T z_comp = z_real * z_real + z_imag * z_imag;
 
         while (z_comp < 4 && current_iteration < maxIterations) {
-)" + formula + R"(/n
+)" + formula + R"(
             z_real = new_real;
             z_comp = z_real * z_real + z_imag * z_imag;
             current_iteration++;
@@ -661,8 +674,8 @@ extern "C" __global__ void fractal_rendering(
             T t_local = fmodf(float_index, 1.0f);
             if (t_local < 0.0f) t_local += 1.0f;
 
-            sf::Color color1 = getPaletteColor(index1, paletteSize, d_palette);
-            sf::Color color2 = getPaletteColor(index2, paletteSize, d_palette);
+            Color color1 = getPaletteColor(index1, paletteSize, d_palette);
+            Color color2 = getPaletteColor(index2, paletteSize, d_palette);
 
             float r_f = static_cast<float>(color1.r) + t_local * (static_cast<float>(color2.r) - static_cast<float>(color1.r));
             float g_f = static_cast<float>(color1.g) + t_local * (static_cast<float>(color2.g) - static_cast<float>(color1.g));
@@ -682,10 +695,50 @@ extern "C" __global__ void fractal_rendering(
         }
     }
 }
+
+template __global__ void fractal_rendering<float>(
+        unsigned char*, size_t, unsigned int, unsigned int,
+        float, float, float, float,
+        Color*, int, float, unsigned int*);
+
+template __global__ void fractal_rendering<double>(
+        unsigned char*, size_t, unsigned int, unsigned int,
+        double, double, double, double,
+        Color*, int, double, unsigned int*);
+
+__global__
+void ANTIALIASING_SSAA4(unsigned char* src, unsigned char* dest, int src_width, int src_height, int dest_width, int dest_height) {
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (x < dest_width && y < dest_height) {
+        int r = 0, g = 0, b = 0;
+        for (int i = 0; i < 2; ++i) {
+            for (int j = 0; j < 2; ++j) {
+                int src_x = x * 2 + i;
+                int src_y = y * 2 + j;
+                if (src_x < src_width && src_y < src_height) {
+                    int src_index = (src_y * src_width + src_x) * 4;
+                    r += src[src_index];
+                    g += src[src_index + 1];
+                    b += src[src_index + 2];
+                }
+            }
+        }
+        int dest_index = (y * dest_width + x) * 4;
+        dest[dest_index] = r / 4;
+        dest[dest_index + 1] = g / 4;
+        dest[dest_index + 2] = b / 4;
+        dest[dest_index + 3] = 255;
+    }
+}
 )";
-    custom_formula = true;
-    nvrtcProgram prog;
+    nvrtcProgram prog = nullptr;
     nvrtcResult compileResult;
+    std::string lowered_kernel_name_float_str;
+    std::string lowered_kernel_name_double_str;
+    std::string lowered_kernel_name_ssaa_str;
+
     try {
         const std::ifstream header_file("../include/fractals/custom.cuh");
         if (!header_file.is_open()) {
@@ -703,20 +756,20 @@ extern "C" __global__ void fractal_rendering(
 
         NVRTC_SAFE_CALL(nvrtcCreateProgram(&prog, kernel_code.c_str(), "custom.cu", 1, headers, includeNames));
 
-        std::vector<const char*> compile_options;
+        NVRTC_SAFE_CALL(nvrtcAddNameExpression(prog, "fractal_rendering<float>"));
+        NVRTC_SAFE_CALL(nvrtcAddNameExpression(prog, "fractal_rendering<double>"));
+        NVRTC_SAFE_CALL(nvrtcAddNameExpression(prog, "ANTIALIASING_SSAA4"));
 
+        std::vector<const char*> compile_options;
         const char* vcpkg_root = std::getenv("VCPKG_ROOT");
         if (vcpkg_root == nullptr) {
             std::cerr << "Warning: VCPKG_ROOT environment variable not set. Assuming a default." << std::endl;
             vcpkg_root = "/home/progamers/vcpkg";
         }
-
         const std::string triplet = "x64-linux";
-
         std::string sfml_include_path = "-I" + std::string(vcpkg_root) + "/installed/" + triplet + "/include";
         compile_options.push_back(sfml_include_path.c_str());
 
-        // **ADD BOTH SYSTEM INCLUDE PATHS:**
         std::string system_include_path1 = "-I/usr/include/c++/14.2.1";
         compile_options.push_back(system_include_path1.c_str());
 
@@ -730,58 +783,131 @@ extern "C" __global__ void fractal_rendering(
 
         compileResult = nvrtcCompileProgram(prog, num_opts, opts);
 
+        size_t logSize = 0;
+        if (prog) {
+            NVRTC_SAFE_CALL(nvrtcGetProgramLogSize(prog, &logSize));
+        }
+
+        std::string log;
+        if (logSize > 1) {
+            log.resize(logSize);
+            NVRTC_SAFE_CALL(nvrtcGetProgramLog(prog, &log[0]));
+        }
+
+        if (compileResult != NVRTC_SUCCESS) {
+            std::cerr << "---------------------\n";
+            std::cerr << "NVRTC Compilation Failed:\n";
+            std::cerr << "Result Code: " << nvrtcGetErrorString(compileResult) << "\n";
+            std::cerr << "---------------------\n";
+            std::cerr << "Compilation Log:\n";
+            std::cerr << log << std::endl;
+            std::cerr << "---------------------\n";
+
+            if (prog) {
+                nvrtcDestroyProgram(&prog);
+            }
+            return;
+        } else {
+            std::cout << "NVRTC Compilation Succeeded.\n";
+            if (!log.empty() && log.length() > 1) {
+                std::cout << "---------------------\n";
+                std::cout << "Compilation Log (Warnings/Info):\n";
+                std::cout << log << std::endl;
+                std::cout << "---------------------\n";
+            }
+        }
+
+        const char* lowered_name_float_ptr = nullptr;
+        if (prog) {
+            NVRTC_SAFE_CALL(nvrtcGetLoweredName(prog, "fractal_rendering<float>", &lowered_name_float_ptr));
+        }
+
+        if (lowered_name_float_ptr) {
+            lowered_kernel_name_float_str = lowered_name_float_ptr;
+        } else {
+            // Handle error if name not found after successful compilation (e.g., return)
+            std::cerr << "Error: Could not get lowered name for fractal_rendering<float>\n";
+            if (prog) nvrtcDestroyProgram(&prog); return;
+        }
+
+        const char* lowered_name_double_ptr = nullptr;
+        if (prog) {
+            NVRTC_SAFE_CALL(nvrtcGetLoweredName(prog, "fractal_rendering<double>", &lowered_name_double_ptr));
+        }
+
+        if (lowered_name_double_ptr) {
+            lowered_kernel_name_double_str = lowered_name_double_ptr;
+        } else {
+            std::cerr << "Error: Could not get lowered name for fractal_rendering<double>\n";
+            if (prog) nvrtcDestroyProgram(&prog); return;
+        }
+
+        const char* lowered_name_ssaa_ptr = nullptr;
+        if (prog) {
+            NVRTC_SAFE_CALL(nvrtcGetLoweredName(prog, "ANTIALIASING_SSAA4", &lowered_name_ssaa_ptr));
+        }
+
+        if (lowered_name_ssaa_ptr) {
+            lowered_kernel_name_ssaa_str = lowered_name_ssaa_ptr;
+        } else {
+            std::cerr << "Error: Could not get lowered name for ANTIALIASING_SSAA4\n";
+            if (prog) nvrtcDestroyProgram(&prog); return;
+        }
+
+
+        size_t ptxSize = 0;
+        if (prog) {
+            NVRTC_SAFE_CALL(nvrtcGetPTXSize(prog, &ptxSize));
+        }
+
+        std::vector<char> ptx;
+        if (ptxSize > 0 && prog) {
+            ptx.resize(ptxSize);
+            NVRTC_SAFE_CALL(nvrtcGetPTX(prog, ptx.data()));
+        }
+
+        if (prog) {
+            NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog));
+            prog = nullptr;
+        }
+
+        if (module) {
+            CUDA_SAFE_CALL(cuModuleUnload(module));
+            module = nullptr;
+        }
+
+        if (!ptx.empty()) {
+            CUDA_SAFE_CALL(cuModuleLoadDataEx(&module, ptx.data(), 0, 0, 0));
+        }
+
+        if (module && !lowered_kernel_name_float_str.empty()) {
+            CUDA_SAFE_CALL(cuModuleGetFunction(&kernelFloat, module, lowered_kernel_name_float_str.c_str()));
+        } else if (!module) { /* Module not loaded */ } else { /* Name string empty, handle as error */ }
+
+
+        if (module && !lowered_kernel_name_double_str.empty()) {
+            CUDA_SAFE_CALL(cuModuleGetFunction(&kernelDouble, module, lowered_kernel_name_double_str.c_str()));
+        } else if (!module) { /* Module not loaded */ } else { /* Name string empty, handle as error */ }
+
+
+        if (module && !lowered_kernel_name_ssaa_str.empty()) {
+            CUDA_SAFE_CALL(cuModuleGetFunction(&kernelAntialiasing, module, lowered_kernel_name_ssaa_str.c_str()));
+        } else if (!module) { /* Module not loaded */ } else { /* Name string empty, handle as error */ }
+
+
     } catch (const std::exception& e) {
-        std::cerr << "Exception in NVRTC setup/compilation: " << e.what() << std::endl;
+        std::cerr << "Exception in NVRTC setup/compilation/loading: " << e.what() << std::endl;
         if (prog) {
             nvrtcDestroyProgram(&prog);
         }
-        throw;
-    }
-
-    size_t logSize = 0;
-    NVRTC_SAFE_CALL(nvrtcGetProgramLogSize(prog, &logSize));
-
-    std::string log;
-    if (logSize > 1) {
-        log.resize(logSize);
-        NVRTC_SAFE_CALL(nvrtcGetProgramLog(prog, &log[0]));
-    }
-
-    if (compileResult != NVRTC_SUCCESS) {
-        std::cerr << "---------------------\n";
-        std::cerr << "NVRTC Compilation Failed:\n";
-        std::cerr << "Result Code: " << nvrtcGetErrorString(compileResult) << "\n";
-        std::cerr << "---------------------\n";
-        std::cerr << "Compilation Log:\n";
-        std::cerr << log << std::endl;
-        std::cerr << "---------------------\n";
-
-        nvrtcDestroyProgram(&prog);
         return;
-    } else {
-        std::cout << "NVRTC Compilation Succeeded.\n";
-        if (!log.empty() && log.length() > 1) {
-            std::cout << "---------------------\n";
-            std::cout << "Compilation Log (Warnings/Info):\n";
-            std::cout << log << std::endl;
-            std::cout << "---------------------\n";
-        }
     }
-
-    size_t ptxSize = 0;
-    NVRTC_SAFE_CALL(nvrtcGetPTXSize(prog, &ptxSize));
-    char *ptx = new char[ptxSize];
-
-    NVRTC_SAFE_CALL(nvrtcGetPTX(prog, ptx));
-    NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog));
-
-    CUDA_SAFE_CALL(cuModuleUnload(module));
-    CUDA_SAFE_CALL(cuModuleLoadDataEx(&module, ptx, 0, 0, 0)); // Load the generated PTX
-    CUDA_SAFE_CALL(cuModuleGetFunction(&kernel, module, "saxpy"));
-
-    delete[] ptx;
-
+    std::cout << "Kernel loaded successfully.\n";
+    custom_formula = true;
 }
+
+template <typename Derived>
+bool FractalBase<Derived>::get_bool_custom_formula() { return custom_formula; }
 
 template <>
 void FractalBase<fractals::mandelbrot>::render(render_state quality) {
@@ -790,7 +916,6 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
         // This block executes only if CUDA (GPU acceleration) is not available.
 
         if (quality == render_state::best) {
-            // Assuming 'best' quality might rely on CUDA-specific features, skip CPU rendering.
             return;
         }
 
@@ -939,8 +1064,8 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
     double render_zoom_x = zoom_x * zoom_scale;
     double render_zoom_y = zoom_y * zoom_scale;
     size_t len = width * height * 4;
-    cudaEventRecord(start_rendering, stream);
     if(!custom_formula){
+        cudaEventRecord(start_rendering, stream);
         if (render_zoom_x > 1e7) {
             dimBlock = dim3(10, 10);
             dimGrid = dim3(
@@ -975,35 +1100,27 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
                 (height + dimBlock.y - 1) / dimBlock.y
         );
 
-        cuMemcpyHtoDAsync(cu_len, &len, sizeof(size_t), stream);
-        cuMemcpyHtoDAsync(cu_width, &width, sizeof(width), stream);
-        cuMemcpyHtoDAsync(cu_height, &height, sizeof(height), stream);
-        cuMemcpyHtoDAsync(cu_x_offset, &x_offset, sizeof(x_offset), stream);
-        cuMemcpyHtoDAsync(cu_y_offset, &y_offset, sizeof(y_offset), stream);
-        cuMemcpyHtoDAsync(cu_paletteSize, &paletteSize, sizeof(paletteSize), stream);
-        cuMemcpyHtoDAsync(cu_max_iterations, &max_iterations, sizeof(max_iterations), stream);
-        cuMemcpyHtoDAsync(cu_render_zoom_x, &render_zoom_x, sizeof(render_zoom_x), stream);
-        cuMemcpyHtoDAsync(cu_render_zoom_y, &render_zoom_y, sizeof(render_zoom_y), stream);
-
         void* args[] = {
                 &cu_d_pixels,
-                &cu_len,
-                &cu_width,
-                &cu_height,
-                &cu_render_zoom_x,
-                &cu_render_zoom_y,
-                &cu_x_offset,
-                &cu_y_offset,
+                &len,
+                &width,
+                &height,
+                &render_zoom_x,
+                &render_zoom_y,
+                &x_offset,
+                &y_offset,
                 &cu_palette,
-                &cu_paletteSize,
-                &cu_max_iterations,
+                &paletteSize,
+                &max_iterations,
                 &cu_d_total_iterations
         };
 
-        CUDA_SAFE_CALL(cuLaunchKernel(kernel,
+        CUfunction launch_kernel = zoom_x > 1e7 ? kernelDouble : kernelFloat;
+
+        CUDA_SAFE_CALL(cuLaunchKernel(launch_kernel,
                 dimGrid.x, dimGrid.y, 1,
                 dimBlock.x, dimBlock.y, 1,
-                0, stream,
+                0, nullptr,
                 args, nullptr));
 
     }
@@ -1015,21 +1132,21 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
         dimBlock.y -= 2;
         dimGrid.x = (width + dimBlock.x - 1) / dimBlock.x;
         dimGrid.y = (height + dimBlock.y - 1) / dimBlock.y;
-        if (zoom_x > 1e7) {
-            fractal_rendering<double><<<dimGrid, dimBlock, 0, stream>>>(
-                d_pixels, len, width, height, render_zoom_x, render_zoom_y,
-                x_offset, y_offset, d_palette, paletteSize,
-                max_iterations, d_total_iterations
-                );
-        }
-        else {
-            fractal_rendering<float><<<dimGrid, dimBlock, 0, stream>>>(
-                    d_pixels, len, width, height, render_zoom_x, render_zoom_y,
-                    x_offset, y_offset, d_palette, paletteSize,
-                    max_iterations, d_total_iterations
-            );
-        }
-        err = cudaGetLastError();
+//        if (zoom_x > 1e7) {
+//            fractal_rendering<double><<<dimGrid, dimBlock, 0, stream>>>(
+//                d_pixels, len, width, height, render_zoom_x, render_zoom_y,
+//                x_offset, y_offset, d_palette, paletteSize,
+//                max_iterations, d_total_iterations
+//                );
+//        }
+//        else {
+//            fractal_rendering<float><<<dimGrid, dimBlock, 0, stream>>>(
+//                    d_pixels, len, width, height, render_zoom_x, render_zoom_y,
+//                    x_offset, y_offset, d_palette, paletteSize,
+//                    max_iterations, d_total_iterations
+//            );
+//        }
+//        err = cudaGetLastError();
         if (dimBlock.x < 2) {
             std::cout << "Critical Issue (mandelbrot set): " << cudaGetErrorString(err) << "\n";
         }
@@ -1043,6 +1160,7 @@ void FractalBase<fractals::julia>::render(
     render_state quality,
     double zx, double zy
 ) {
+    return;
     if (!isCudaAvailable) {
         return;
     }
@@ -1218,6 +1336,7 @@ template <typename Derived>
 
 // Mouse pos should be relative to the picture and not to the screen
 void FractalBase<Derived>::handleZoom(double wheel_delta, const sf::Vector2i mouse_pos) {
+
     double old_zoom_x = zoom_x;
     double old_zoom_y = zoom_y;
     double old_x_offset = x_offset;

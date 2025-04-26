@@ -644,9 +644,9 @@ int main() {
                     }
                     case sf::Keyboard::Scancode::F12:
                         if (isInMandelbrotArea) {
-                            mandelbrotFractal.set_custom_formula("new_real = 2 * z_real * z_real - z_imag * z_imag + real;\n"
+                            mandelbrotFractal.set_custom_formula("new_real = (z_real * z_real - z_imag * z_imag) + real;\n"
                                                                  "z_imag =  2 * z_real * z_imag + imag;\n"
-                                                                 "");
+                                                                 );
                             needsMandelbrotRender = true;
                         }
                         break;
