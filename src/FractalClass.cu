@@ -17,7 +17,7 @@
     }                                                             \
 } while(0)
 
-#define CUDA_SAFE_CALL(x)                                         \
+#define CU_SAFE_CALL(x)                                           \
   do {                                                            \
     CUresult result = x;                                          \
     if (result != CUDA_SUCCESS) {                                 \
@@ -30,19 +30,41 @@
 } while(0)
 
 #define ALLOC_AND_COPY_TO_DEVICE_CU(cu_devPtr, hostVar, type, num)          \
-  CUDA_SAFE_CALL(cuMemAlloc(&cu_devPtr, sizeof(type) * num));               \
-  CUDA_SAFE_CALL(cuMemcpyHtoD(cu_devPtr, &hostVar, sizeof(type) * num));
+  CU_SAFE_CALL(cuMemAlloc(&cu_devPtr, sizeof(type) * num));               \
+  CU_SAFE_CALL(cuMemcpyHtoD(cu_devPtr, &hostVar, sizeof(type) * num));
+
+#define CUDA_SAFE_CALL(x) \
+  do {                    \
+    cudaError_t result = x;                                         \
+    if (result != CUDA_SUCCESS) {                                   \
+      const char *msg =  cudaGetErrorName(result);                  \
+      std::cerr << "\nerror: " #x " failed with error "             \
+                << msg << '\n';                                     \
+      return;                                                       \
+    }                                                               \
+  }while(0)
+
 
 #define MAKE_CURR_CONTEXT_OPERATION(x, y, ctx)                      \
   do {                                                              \
-    if (context = context_type::CUDA){                              \
-      CUDA_SAFE_CALL(x)                                             \
+    if (context == context_type::CUDA){                             \
+      CUDA_SAFE_CALL(x);                                            \
     }                                                               \
     else{                                                           \
-      CUDA_SAFE_CALL(y)                                             \
+      CU_SAFE_CALL(y);                                              \
     }                                                               \
 } while(0)
 
+
+#define COPY_PALETTE_TO_DEVICE(host, d, cu, ctx)                                                       \
+  do {                                                                                          \
+    if (context == context_type::CUDA){                                                         \
+      CUDA_SAFE_CALL(cudaMemcpy(d, host, sizeof(Color) * paletteSize, cudaMemcpyHostToDevice));    \
+    }                                                                                           \
+    else{                                                                                       \
+      CU_SAFE_CALL(cuMemcpyHtoD(cu, host, sizeof(Color) * paletteSize));                            \
+    }                                                                                           \
+} while(0)
 
 void cpu_render_mandelbrot(render_target target, unsigned char* pixels, unsigned int width, unsigned int height, double zoom_x, double zoom_y,
     double x_offset, double y_offset, Color* palette, unsigned int paletteSize,
@@ -158,9 +180,6 @@ FractalBase<Derived>::FractalBase()
     disX(-2.f, 2.f), disY(-1.5f, 1.5f),
     disVelX(-0.13f, 0.13f),disVelY(-0.1f, 0.1f)
 {
-    if(std::is_same<Derived, fractals::julia>::value){
-        return;
-    }
 
     isCudaAvailable = true;
     int numDevices;
@@ -174,54 +193,51 @@ FractalBase<Derived>::FractalBase()
     palette = createHSVPalette(20000);
     paletteSize = 20000;
 
-    cudaHostAlloc(&h_doubleCancelFlag, sizeof(int), 0);
-    *h_doubleCancelFlag = 0;
-    cudaMalloc(&d_doubleCancelFlag, sizeof(int));
-    cudaMemcpy(d_doubleCancelFlag, h_doubleCancelFlag, sizeof(int), cudaMemcpyHostToDevice);
 
-    cudaMalloc(&d_palette, palette.size() * sizeof(sf::Color));
-    cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+    MAKE_CURR_CONTEXT_OPERATION(cudaMalloc(&d_palette, palette.size() * sizeof(Color)), cuMemAlloc(&cu_palette, sizeof(Color) * paletteSize), ctx);
+    MAKE_CURR_CONTEXT_OPERATION(cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(Color), cudaMemcpyHostToDevice), cuMemcpyHtoD(cu_palette, palette.data(), sizeof(Color) * paletteSize), ctx);
 
     // Alloc data for the GPU uncompressed image
     // We are allocating twice the size of the image because we are using SSAA
-    cudaMalloc(&d_pixels, width * 2 * height * 2 * 4 * sizeof(char4));
+    MAKE_CURR_CONTEXT_OPERATION(cudaMalloc(&d_pixels, width * 2 * height * 2 * 4 * sizeof(char4)), cuMemAlloc(&cu_d_pixels, sizeof(unsigned char) * width * 2 * height * 2 * 4), ctx);
 
     // Alloc data for the CPU uncompressed image
-    cudaMallocHost(&pixels, width * 2 * height * 2 * 4 * sizeof(char4));
+    MAKE_CURR_CONTEXT_OPERATION(cudaMallocHost(&pixels, width * 2 * height * 2 * 4 * sizeof(char4)), cuMemHostAlloc((void**)&pixels, sizeof(unsigned char) * width * 2 * height * 2 * 4, 0), ctx);
 
     // Alloc data for the GPU compressed image
-    cudaMalloc(&ssaa_buffer, width * height * 4 * sizeof(char4));
+    MAKE_CURR_CONTEXT_OPERATION(cudaMalloc(&ssaa_buffer, width * height * 4 * sizeof(char4)), cuMemAlloc(&CUssaa_buffer, sizeof(unsigned char) * width * height * 4), ctx);
 
     // Alloc data for the CPU compressed image
-	cudaMallocHost(&compressed, width * height * 4 * sizeof(char4));
+    MAKE_CURR_CONTEXT_OPERATION(cudaMallocHost(&compressed, width * height * 4 * sizeof(char4)), cuMemHostAlloc((void**)&compressed, sizeof(unsigned char) * width * height * 4, 0), ctx);
 
-	cudaStreamCreate(&stream);
+    MAKE_CURR_CONTEXT_OPERATION(cudaStreamCreate(&stream), cuStreamCreate(&stream, 0), ctx);
 
-    cudaEventCreate(&start_rendering);
-    cudaEventCreate(&stop_rendering);
+    MAKE_CURR_CONTEXT_OPERATION(cudaEventCreate(&start_rendering), cuEventCreate(&start_rendering, CU_EVENT_DEFAULT), ctx);
+    MAKE_CURR_CONTEXT_OPERATION(cudaEventCreate(&stop_rendering), cuEventCreate(&stop_rendering, CU_EVENT_DEFAULT), ctx);
 
-    cudaMalloc(&d_total_iterations, sizeof(int));
-    cudaMemset(d_total_iterations, 0, sizeof(int));
-    cudaMallocHost(&h_total_iterations , sizeof(int));
+    MAKE_CURR_CONTEXT_OPERATION(cudaMalloc(&d_total_iterations, sizeof(int)), cuMemAlloc(&cu_d_total_iterations, sizeof(unsigned int)), ctx);
+    unsigned int zero = 0;
+    MAKE_CURR_CONTEXT_OPERATION(cudaMemset(d_total_iterations, 0, sizeof(unsigned int)), cuMemcpyHtoD(cu_d_total_iterations, &zero, sizeof(unsigned int)), ctx);
+    MAKE_CURR_CONTEXT_OPERATION(cudaMallocHost(&h_total_iterations , sizeof(unsigned int)), cuMemHostAlloc((void**)&h_total_iterations, sizeof(unsigned int), 0), ctx);
 
-    cudaStreamCreate(&dataStream);
+    MAKE_CURR_CONTEXT_OPERATION(cudaStreamCreate(&dataStream), cuStreamCreate(&dataStream, 0), ctx);
 
     iterationpoints.resize(max_iterations);
+
 }
 
 template <typename Derived>
 FractalBase<Derived>::~FractalBase() {
-    cudaFree(d_pixels);
-    cudaFree(d_palette);
-    cudaFree(d_total_iterations);
-    cudaFree(d_doubleCancelFlag);
-    cudaFreeHost(pixels);
-	cudaFreeHost(compressed);
-    cudaFreeHost(h_total_iterations);
-	cudaEventDestroy(start_rendering);
-	cudaEventDestroy(stop_rendering);
-    cudaStreamDestroy(stream);
-	cudaStreamDestroy(dataStream);
+    MAKE_CURR_CONTEXT_OPERATION(cudaFree(d_pixels), cuMemFree(cu_d_pixels), ctx);
+    MAKE_CURR_CONTEXT_OPERATION(cudaFree(d_palette), cuMemFree(cu_palette), ctx);
+    MAKE_CURR_CONTEXT_OPERATION(cudaFree(d_total_iterations), cuMemFree(cu_d_total_iterations), ctx);
+    MAKE_CURR_CONTEXT_OPERATION(cudaFreeHost(pixels), cuMemFreeHost(pixels), ctx);
+    MAKE_CURR_CONTEXT_OPERATION(cudaFreeHost(compressed), cuMemFreeHost(compressed), ctx);
+    MAKE_CURR_CONTEXT_OPERATION(cudaFreeHost(h_total_iterations), cuMemFreeHost(h_total_iterations), ctx);
+    MAKE_CURR_CONTEXT_OPERATION(cudaEventDestroy(start_rendering), cuEventDestroy(start_rendering), ctx);
+    MAKE_CURR_CONTEXT_OPERATION(cudaEventDestroy(stop_rendering), cuEventDestroy(stop_rendering), ctx);
+    MAKE_CURR_CONTEXT_OPERATION(cudaStreamDestroy(stream), cuStreamDestroy(stream), ctx);
+    MAKE_CURR_CONTEXT_OPERATION(cudaStreamDestroy(dataStream), cuStreamDestroy(dataStream), ctx);
 }
 
 template <typename Derived>
@@ -265,109 +281,109 @@ void FractalBase<Derived>::setPallete(std::string name) {
     if (name == "HSV") {
 		palette = createHSVPalette(20000, degrees_offsetForHSV);
 		paletteSize = 20000;
-        cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+        COPY_PALETTE_TO_DEVICE(palette.data(), d_palette, cu_palette, context);
         curr_pallete = Palletes::HSV;
     }
     if (name == "Basic") {
 		palette = BluePlusBlackWhitePalette(20000);
 		paletteSize = 20000;
-		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+        COPY_PALETTE_TO_DEVICE(palette.data(), d_palette, cu_palette, context);
 		curr_pallete = Palletes::Basic;
     }
     if (name == "BlackOWhite") {
 		palette = CreateBlackOWhitePalette(20000);
 		paletteSize = 20000;
-		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+        COPY_PALETTE_TO_DEVICE(palette.data(), d_palette, cu_palette, context);
 		curr_pallete = Palletes::BlackOWhite;
     }
     if (name == "OscillatingGrayscale") {
 		palette = CreateOscillatingGrayscalePalette(20000);
 		paletteSize = 20000;
-		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+        COPY_PALETTE_TO_DEVICE(palette.data(), d_palette, cu_palette, context);
 		curr_pallete = Palletes::OscillatingGrayscale;
     }
     if (name == "Interpolated") {
 		palette = CreateInterpolatedPalette(20000);
 		paletteSize = 20000;
-		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+        COPY_PALETTE_TO_DEVICE(palette.data(), d_palette, cu_palette, context);
 		curr_pallete = Palletes::Interpolated;
     }
     if (name == "Pastel") {
         palette = CreatePastelPalette(20000);
         paletteSize = 20000;
-        cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+        COPY_PALETTE_TO_DEVICE(palette.data(), d_palette, cu_palette, context);
         curr_pallete = Palletes::Pastel;
     }
     if (name == "CyclicHSV") {
 		palette = CreateCyclicHSVPpalette(20000);
 		paletteSize = 20000;
-		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+        COPY_PALETTE_TO_DEVICE(palette.data(), d_palette, cu_palette, context);
 		curr_pallete = Palletes::CyclicHSV;
     }
     if (name == "Fire") {
 		palette = CreateFirePalette(20000);
 		paletteSize = 20000;
-		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+        COPY_PALETTE_TO_DEVICE(palette.data(), d_palette, cu_palette, context);
 		curr_pallete = Palletes::Fire;
     }
     if (name == "FractalPattern") {
 		palette = CreateFractalPatternPalette(20000);
 		paletteSize = 20000;
-		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+        COPY_PALETTE_TO_DEVICE(palette.data(), d_palette, cu_palette, context);
 		curr_pallete = Palletes::FractalPattern;
     }
     if (name == "PerlinNoise") {
 		palette = CreatePerlinNoisePalette(20000);
 		paletteSize = 20000;
-		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+        COPY_PALETTE_TO_DEVICE(palette.data(), d_palette, cu_palette, context);
 		curr_pallete = Palletes::PerlinNoise;
     }
     if (name == "Water") {
 		palette = CreateWaterPalette(20000);
 		paletteSize = 20000;
-		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+        COPY_PALETTE_TO_DEVICE(palette.data(), d_palette, cu_palette, context);
 		curr_pallete = Palletes::Water;
     }
     if (name == "Sunset") {
 		palette = CreateSunsetPalette(20000);
 		paletteSize = 20000;
-		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+        COPY_PALETTE_TO_DEVICE(palette.data(), d_palette, cu_palette, context);
 		curr_pallete = Palletes::Sunset;
     }
     if (name == "DeepSpace") {
 		palette = CreateDeepSpaceWideVeinsPalette(20000);
 		paletteSize = 20000;
-		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+        COPY_PALETTE_TO_DEVICE(palette.data(), d_palette, cu_palette, context);
 		curr_pallete = Palletes::DeepSpace;
     }
     if (name == "Physchodelic") {
 		palette = CreatePsychedelicWavePalette(20000);
 		paletteSize = 20000;
-		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+        COPY_PALETTE_TO_DEVICE(palette.data(), d_palette, cu_palette, context);
 		curr_pallete = Palletes::Physchodelic;
     }
     if (name == "IceCave") {
 		palette = CreateIceCavePalette(20000);
 		paletteSize = 20000;
-		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+        COPY_PALETTE_TO_DEVICE(palette.data(), d_palette, cu_palette, context);
 		curr_pallete = Palletes::IceCave;
     }
     if (name == "AccretionDisk") {
 		palette = CreateAccretionDiskPalette(20000);
 		paletteSize = 20000;
-		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+        COPY_PALETTE_TO_DEVICE(palette.data(), d_palette, cu_palette, context);
 		curr_pallete = Palletes::AccretionDisk;
     }
     if (name == "ElectricNebula") {
 		palette = CreateElectricNebulaPalette(20000);
 		paletteSize = 20000;
-		cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+        COPY_PALETTE_TO_DEVICE(palette.data(), d_palette, cu_palette, context);
 		curr_pallete = Palletes::ElectricNebula;
     }
     if (name == "Random") {
         palette = CreateRandomPalette(20000);
         paletteSize = 20000;
-        cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+        COPY_PALETTE_TO_DEVICE(palette.data(), d_palette, cu_palette, context);
         curr_pallete = Palletes::Random;
     }
 }
@@ -398,15 +414,13 @@ void FractalBase<Derived>::set_resolution(sf::Vector2i target_resolution) {
     y_offset = center_y - (height / (zoom_y * zoom_scale)) / 2.0;
 
 
+    MAKE_CURR_CONTEXT_OPERATION(cudaFree(d_pixels), cuMemFree(cu_d_pixels), context);
+    MAKE_CURR_CONTEXT_OPERATION(cudaFreeHost(pixels), cuMemFreeHost(pixels), context);
+    MAKE_CURR_CONTEXT_OPERATION(cudaFree(ssaa_buffer), cuMemFree(CUssaa_buffer), context);
+    MAKE_CURR_CONTEXT_OPERATION(cudaFreeHost(compressed), cuMemFreeHost(compressed), context);
+    size_t amount_of_bytes = width * height * 4 * sizeof(char4);
 
-    cudaFree(d_pixels);
-    cudaFreeHost(pixels);
-    cudaFree(ssaa_buffer);
-    cudaFreeHost(compressed);
-
-    // Alloc data for the GPU uncompressed image
-    // We are allocating twice the size of the image because we are using SSAA
-    cudaMalloc(&d_pixels, width * 2 * height * 2 * 4 * sizeof(char4));
+    MAKE_CURR_CONTEXT_OPERATION(cudaMalloc(&d_pixels, amount_of_bytes * 4), cuMemAlloc(&cu_d_pixels, amount_of_bytes * 4), context);
 
     // Alloc data for the CPU uncompressed image
     cudaMallocHost(&pixels, width * 2 * height * 2 * 4 * sizeof(char4));
@@ -481,7 +495,6 @@ template <typename Derived>
 void FractalBase<Derived>::reset() {
     cudaFree(d_pixels);
     cudaFree(d_palette);
-    cudaFree(stopFlagDevice);
     cudaFree(d_total_iterations);
     cudaFreeHost(pixels);
     cudaFreeHost(compressed);
@@ -517,13 +530,8 @@ void FractalBase<Derived>::reset() {
         paletteSize = 20000;
     }
 
-    cudaHostAlloc(&h_doubleCancelFlag, sizeof(int), 0);
-    *h_doubleCancelFlag = 0;
-    cudaMalloc(&d_doubleCancelFlag, sizeof(int));
-    cudaMemcpy(d_doubleCancelFlag, h_doubleCancelFlag, sizeof(int), cudaMemcpyHostToDevice);
-
-    cudaMalloc(&d_palette, palette.size() * sizeof(sf::Color));
-    cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(sf::Color), cudaMemcpyHostToDevice);
+    cudaMalloc(&d_palette, palette.size() * sizeof(Color));
+    cudaMemcpy(d_palette, palette.data(), palette.size() * sizeof(Color), cudaMemcpyHostToDevice);
 
     // Alloc data for the GPU uncompressed image
     // We are allocating twice the size of the image because we are using SSAA
@@ -575,12 +583,12 @@ void FractalBase<fractals::mandelbrot>::set_custom_formula(const std::string for
         cuDeviceGet(&device, 0);
         cuCtxCreate(&ctx, 0, device);
 
-        CUDA_SAFE_CALL(cuMemAlloc(&cu_d_pixels, sizeof(unsigned char) * width * 2 * height * 2 * 4));
+        CU_SAFE_CALL(cuMemAlloc(&cu_d_pixels, sizeof(unsigned char) * width * 2 * height * 2 * 4));
         ALLOC_AND_COPY_TO_DEVICE_CU(cu_d_total_iterations, max_iterations, unsigned int, 1);
-        CUDA_SAFE_CALL(cuMemAlloc(&cu_palette, sizeof(Color) * paletteSize));
-        CUDA_SAFE_CALL(cuMemcpyHtoD(cu_palette, palette.data(), sizeof(Color) * paletteSize));
-        CUDA_SAFE_CALL(cuMemAlloc(&CUssaa_buffer, sizeof(unsigned char) * width * 2 * height * 2 * 4));
-        CUDA_SAFE_CALL(cuMemcpyHtoD(cu_d_pixels, pixels, sizeof(unsigned char) * width * 2 * height * 2 * 4));
+        CU_SAFE_CALL(cuMemAlloc(&cu_palette, sizeof(Color) * paletteSize));
+        CU_SAFE_CALL(cuMemcpyHtoD(cu_palette, palette.data(), sizeof(Color) * paletteSize));
+        CU_SAFE_CALL(cuMemAlloc(&CUssaa_buffer, sizeof(unsigned char) * width * 2 * height * 2 * 4));
+        CU_SAFE_CALL(cuMemcpyHtoD(cu_d_pixels, pixels, sizeof(unsigned char) * width * 2 * height * 2 * 4));
     }
 
 
@@ -872,26 +880,26 @@ void ANTIALIASING_SSAA4(unsigned char* src, unsigned char* dest, int src_width, 
         }
 
         if (module) {
-            CUDA_SAFE_CALL(cuModuleUnload(module));
+            CU_SAFE_CALL(cuModuleUnload(module));
             module = nullptr;
         }
 
         if (!ptx.empty()) {
-            CUDA_SAFE_CALL(cuModuleLoadDataEx(&module, ptx.data(), 0, 0, 0));
+            CU_SAFE_CALL(cuModuleLoadDataEx(&module, ptx.data(), 0, 0, 0));
         }
 
         if (module && !lowered_kernel_name_float_str.empty()) {
-            CUDA_SAFE_CALL(cuModuleGetFunction(&kernelFloat, module, lowered_kernel_name_float_str.c_str()));
+            CU_SAFE_CALL(cuModuleGetFunction(&kernelFloat, module, lowered_kernel_name_float_str.c_str()));
         } else if (!module) { /* Module not loaded */ } else { /* Name string empty, handle as error */ }
 
 
         if (module && !lowered_kernel_name_double_str.empty()) {
-            CUDA_SAFE_CALL(cuModuleGetFunction(&kernelDouble, module, lowered_kernel_name_double_str.c_str()));
+            CU_SAFE_CALL(cuModuleGetFunction(&kernelDouble, module, lowered_kernel_name_double_str.c_str()));
         } else if (!module) { /* Module not loaded */ } else { /* Name string empty, handle as error */ }
 
 
         if (module && !lowered_kernel_name_ssaa_str.empty()) {
-            CUDA_SAFE_CALL(cuModuleGetFunction(&kernelAntialiasing, module, lowered_kernel_name_ssaa_str.c_str()));
+            CU_SAFE_CALL(cuModuleGetFunction(&kernelAntialiasing, module, lowered_kernel_name_ssaa_str.c_str()));
         } else if (!module) { /* Module not loaded */ } else { /* Name string empty, handle as error */ }
 
 
@@ -1117,7 +1125,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
 
         CUfunction launch_kernel = zoom_x > 1e7 ? kernelDouble : kernelFloat;
 
-        CUDA_SAFE_CALL(cuLaunchKernel(launch_kernel,
+        CU_SAFE_CALL(cuLaunchKernel(launch_kernel,
                 dimGrid.x, dimGrid.y, 1,
                 dimBlock.x, dimBlock.y, 1,
                 0, nullptr,

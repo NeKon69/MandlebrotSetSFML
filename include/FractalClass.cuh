@@ -153,7 +153,6 @@ protected:
     // CUDA properties
     dim3 dimGrid;
     dim3 dimBlock;
-    bool* stopFlagDevice;
     unsigned int basic_width;
     unsigned int basic_height;
     unsigned int width;
