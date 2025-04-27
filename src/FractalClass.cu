@@ -1293,9 +1293,7 @@ void FractalBase<Derived>::set_context(context_type contx){
             cuInit(0);
         }
         initialized_nvrtc = true;
-        if(!created_context){
-            cuCtxCreate(&ctx, 0, device);
-        }
+        cuCtxCreate(&ctx, 0, device);
         created_context = true;
         cuDeviceGet(&device, 0);
     }
@@ -1528,33 +1526,36 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
         );
 
         size_t len = width * height * 4;
-        double render_zoom_x_d = render_zoom_x; // Используем _d для double версии
+        double render_zoom_x_d = render_zoom_x;
         double render_zoom_y_d = render_zoom_y;
         double x_offset_d = x_offset;
         double y_offset_d = y_offset;
-        unsigned int max_iterations_val = max_iterations; // Передаем значение!
-        unsigned int paletteSize_val = paletteSize; // Передаем значение!
-        unsigned int width_val = width; // Передаем значение!
-        unsigned int height_val = height; // Передаем значение!
+        float max_iterations_val = max_iterations;
+        double max_iterations_d = max_iterations;
+        unsigned int paletteSize_val = paletteSize;
+        unsigned int width_val = width;
+        unsigned int height_val = height;
 
-        if (zoom_x > 1e7) { // Запуск double-версии
+        if (zoom_x > 1e7) {
             void* args[] = {
                     &cu_d_pixels,
-                    &len,                   // Передаем size_t* (как ожидается ядром)
-                    &width_val,             // Передаем unsigned int* (как ожидается ядром)
-                    &height_val,            // Передаем unsigned int* (как ожидается ядром)
-                    &render_zoom_x_d,       // Передаем double*
-                    &render_zoom_y_d,       // Передаем double*
-                    &x_offset_d,            // Передаем double*
-                    &y_offset_d,            // Передаем double*
+                    &len,
+                    &width_val,
+                    &height_val,
+                    &render_zoom_x_d,
+                    &render_zoom_y_d,
+                    &x_offset_d,
+                    &y_offset_d,
                     &cu_palette,
-                    &paletteSize_val,       // Передаем unsigned int*
-                    &max_iterations_val,    // Передаем unsigned int*
+                    &paletteSize_val,
+                    &max_iterations_d,
                     &cu_d_total_iterations
             };
-            CU_SAFE_CALL(cuLaunchKernel(kernelDouble, dimGrid.x, dimGrid.y, 1, dimBlock.x, dimBlock.y, 1, 0, stream, args, nullptr)); // УКАЗЫВАЙТЕ STREAM!
+            CU_SAFE_CALL(cuLaunchKernel(kernelDouble, dimGrid.x, dimGrid.y, 1,
+                                        dimBlock.x, dimBlock.y, 1,
+                                        0, stream,
+                                        args, nullptr));
         } else { // Запуск float-версии
-            // Создаем временные float переменные
             float render_zoom_x_f = static_cast<float>(render_zoom_x_d);
             float render_zoom_y_f = static_cast<float>(render_zoom_y_d);
             float x_offset_f = static_cast<float>(x_offset_d);
@@ -1565,13 +1566,13 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
                     &len,
                     &width_val,
                     &height_val,
-                    &render_zoom_x_f,       // Передаем float*
-                    &render_zoom_y_f,       // Передаем float*
-                    &x_offset_f,            // Передаем float*
-                    &y_offset_f,            // Передаем float*
+                    &render_zoom_x_f,
+                    &render_zoom_y_f,
+                    &x_offset_f,
+                    &y_offset_f,
                     &cu_palette,
-                    &paletteSize_val,       // Передаем unsigned int*
-                    &max_iterations_val,    // Передаем unsigned int*
+                    &paletteSize_val,
+                    &max_iterations_val,
                     &cu_d_total_iterations
             };
             CU_SAFE_CALL(cuLaunchKernel(kernelFloat, dimGrid.x, dimGrid.y, 1, dimBlock.x, dimBlock.y, 1, 0, stream, args, nullptr)); // УКАЗЫВАЙТЕ STREAM!
