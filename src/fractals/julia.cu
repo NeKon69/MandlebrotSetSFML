@@ -21,12 +21,8 @@ __global__ void fractal_rendering(
 
     if (x < width && y < height) {
         __shared__ unsigned int total_iterations[1024];
-
-        // For the Julia set, starting point is determined by the pixel position.
         T z_real = x / zoom_x - x_offset;
         T z_imag = y / zoom_y - y_offset;
-
-        // c is the fixed complex constant passed as parameters.
         T real = cReal;
         T imag = cImaginary;
 

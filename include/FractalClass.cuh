@@ -15,6 +15,7 @@ namespace fractals {
 	struct mandelbrot{};
     struct julia{};
     struct burning_ship{};
+
 };
 
 enum class Palletes {
@@ -70,10 +71,13 @@ struct RenderGuard {
         flag.store(false);
     }
 };
+static bool initialized_nvrtc;
+static bool created_context;
 
 template <typename Derived>
 class FractalBase : public sf::Transformable, public sf::Drawable {
 protected:
+
     // Custom Formula Properties
     context_type context = context_type::CUDA;
     bool custom_formula = false;
@@ -225,6 +229,8 @@ public:
     */
 	void set_max_iters(unsigned int max_iters);
 
+    void set_context(context_type ctx);
+
     void set_resolution(sf::Vector2i target_resolution);
 
     void post_processing();
@@ -232,6 +238,8 @@ public:
     void reset();
 
     void set_custom_formula(std::string formula);
+
+    context_type get_context();
 
     /**
      * @brief CUDA kernel function to calculate and render the fractal given template.
