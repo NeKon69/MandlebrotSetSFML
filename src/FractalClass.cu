@@ -598,7 +598,7 @@ void FractalBase<fractals::mandelbrot>::set_custom_formula(const std::string for
         std::cerr << "YOU can't set custom formula unless switch context to NVRTC" << std::endl;
         return;
     }
-
+    CU_SAFE_CALL(cuCtxSetCurrent(ctx));
     kernel_code = R"(
 #include "../include/fractals/custom.cuh"
 template <typename T>
@@ -932,6 +932,7 @@ void FractalBase<fractals::julia>::set_custom_formula(const std::string formula)
         std::cerr << "YOU can't set custom formula unless switching context to NVRTC" << std::endl;
         return;
     }
+    CU_SAFE_CALL(cuCtxSetCurrent(ctx));
     kernel_code = R"(
 #include "../include/fractals/custom.cuh"
 template <typename T>
@@ -1531,6 +1532,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
                     &max_iterations_d,
                     &cu_d_total_iterations
             };
+            std::cout << kernelDouble << std::endl;
             CU_SAFE_CALL(cuLaunchKernel(kernelDouble, dimGrid.x, dimGrid.y, 1,
                                         dimBlock.x, dimBlock.y, 1,
                                         0, nullptr,
@@ -1555,6 +1557,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
                     &max_iterations_val,
                     &cu_d_total_iterations
             };
+            std::cout << kernelFloat << std::endl;
             CU_SAFE_CALL(cuLaunchKernel(kernelFloat,
                                         dimGrid.x, dimGrid.y, 1,
                                         dimBlock.x, dimBlock.y, 1,
@@ -1691,7 +1694,7 @@ void FractalBase<fractals::julia>::render(
         };
 
         CUfunction launch_kernel = zoom_x > 1e7 ? kernelDouble : kernelFloat;
-
+        std::cout << launch_kernel << std::endl;
         CU_SAFE_CALL(cuLaunchKernel(launch_kernel,
                 dimGrid.x, dimGrid.y, 1,
                 dimBlock.x, dimBlock.y, 1,
