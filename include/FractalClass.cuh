@@ -92,6 +92,8 @@ protected:
     CUdeviceptr cu_d_pixels;
     CUdeviceptr cu_palette;
     CUdeviceptr CUssaa_buffer;
+    CUstream CUss;
+    CUstream CUssData;
 
 
 
