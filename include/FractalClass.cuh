@@ -85,6 +85,7 @@ protected:
     CUcontext ctx;
     CUdevice device;
     CUmodule module;
+    bool module_loaded = false;
     CUfunction kernelFloat;
     CUfunction kernelDouble;
     CUfunction kernelAntialiasing;

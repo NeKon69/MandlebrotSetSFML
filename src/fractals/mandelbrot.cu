@@ -48,7 +48,6 @@ __global__ void fractal_rendering(
         T z_imag = 0.0;
         T current_iteration = 0;
         T z_comp = z_real * z_real + z_imag * z_imag;
-
         while (z_comp < 4 && current_iteration < maxIterations) {
             new_real = (z_real * z_real - z_imag * z_imag) + real;
             z_imag = 2 * z_real * z_imag + imag;

@@ -328,13 +328,55 @@ int main() {
         updateIterationsDynamicallyMandelbrot = false;
     });
     gui.add(UpdateMaxIterationsMandelbrot);
-    // --- Julia Controls ---
 
+    tgui::ComboBox::Ptr context_switcher_mandelbrot = tgui::ComboBox::create();
+    context_switcher_mandelbrot->setPosition({controlGroupXOffsetMandelbrot, tgui::bindBottom(UpdateMaxIterationsMandelbrot) + controlPadding});
+    context_switcher_mandelbrot->setSize({controlWidth, 24});
+    context_switcher_mandelbrot->addMultipleItems({"NVRTC", "CUDA"});
+    context_switcher_mandelbrot->setSelectedItem("CUDA");
+    context_switcher_mandelbrot->onItemSelect([&](const tgui::String& item){
+        if(item == "CUDA") mandelbrotFractal.set_context(context_type::CUDA);
+        else mandelbrotFractal.set_context(context_type::NVRTC);
+    });
+    gui.add(context_switcher_mandelbrot);
+
+    const unsigned int height_of_text_area = 200;
+    tgui::TextArea::Ptr custom_code = tgui::TextArea::create();
+    custom_code->setPosition({controlGroupXOffsetMandelbrot, tgui::bindBottom(context_switcher_mandelbrot) + controlPadding});
+    custom_code->setSize({controlWidth * 2, height_of_text_area});
+    custom_code->setText("new_real = z_real * z_real - z_imag * z_imag + real;\n"
+                         "z_imag =  2 * z_real * z_imag + imag;\n");
+    custom_code->setMaximumCharacters(500);
+    gui.add(custom_code);
+
+    auto parse  = tgui::Button::create("Compile!");
+    parse->setPosition({controlGroupXOffsetMandelbrot, tgui::bindBottom(custom_code) + controlPadding});
+    parse->setSize({controlWidth, 24});
+    parse->onPress([&](){
+        std::string code = custom_code->getText().toStdString();
+        mandelbrotFractal.set_custom_formula(code);
+        juliaFractal.set_custom_formula(code);
+        needsMandelbrotRender = true;
+        needsJuliaRender = true;
+        context_switcher_mandelbrot->setSelectedItem("NVRTC");
+    });
+    gui.add(parse);
+
+
+
+
+    // --- Julia Controls ---
     sf::Vector2i initialJuliaRes = juliaFractal.get_resolution();
     float juliaControlsStartY = static_cast<float>(initialJuliaRes.y) + controlPadding;
 
+    tgui::Panel::Ptr juliaPanel = tgui::Panel::create();
+    juliaPanel->setPosition(controlGroupXOffsetJulia - controlPadding, juliaControlsStartY - controlPadding);
+    juliaPanel->setSize({controlWidth + controlPadding * 2, initialJuliaRes.y + controlPadding * 2});
+    juliaPanel->getRenderer()->setBackgroundColor({220, 220, 220, 200});
+
+
     tgui::Label::Ptr juliaLabel = tgui::Label::create("Julia Settings");
-    juliaLabel->setPosition(controlGroupXOffsetJulia, juliaControlsStartY);
+    juliaLabel->setPosition(controlGroupXOffsetJulia, juliaControlsStartY + controlPadding);
     juliaLabel->setTextSize(16);
     gui.add(juliaLabel);
 
@@ -644,14 +686,6 @@ int main() {
                     }
                     case sf::Keyboard::Scancode::F12:
                         if (isInMandelbrotArea) {
-                            mandelbrotFractal.set_context(context_type::NVRTC);
-                            juliaFractal.set_context(context_type::NVRTC);
-                            mandelbrotFractal.set_custom_formula("new_real = (z_real * z_real - z_imag * z_imag) + real;\n"
-                                                                 "z_imag =  2 * z_real * z_imag + imag;\n"
-                                                                 );
-                            juliaFractal.set_custom_formula("new_real = (z_real * z_real - z_imag * z_imag) + real;\n"
-                                                                "z_imag =  2 * z_real * z_imag + imag;\n"
-                                                                );
                             needsMandelbrotRender = true;
                             needsJuliaRender = true;
                         }
