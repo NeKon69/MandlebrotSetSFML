@@ -159,8 +159,19 @@ int main() {
     sf::Clock timer_update_iteration;
 
     // --- Mandelbrot Controls ---
+
     sf::Vector2i initialMandelbrotRes = mandelbrotFractal.get_resolution();
     float mandelbrotControlsStartY = static_cast<float>(initialMandelbrotRes.y) + controlPadding;
+
+    tgui::Panel::Ptr controlPanelMandelbrot = tgui::Panel::create();
+    controlPanelMandelbrot->setSize({controlWidth + controlPadding * 2, 290});
+    controlPanelMandelbrot->setPosition(controlGroupXOffsetMandelbrot - controlPadding / 2, mandelbrotControlsStartY - controlPadding / 2);
+    controlPanelMandelbrot->getRenderer()->setBackgroundColor(sf::Color(240, 240, 240, 200));
+    controlPanelMandelbrot->getRenderer()->setBorderColor(sf::Color(150, 150, 150, 255));
+    controlPanelMandelbrot->getRenderer()->setBorders(2);
+    controlPanelMandelbrot->getRenderer()->setRoundedBorderRadius(5);
+    controlPanelMandelbrot->getRenderer()->setPadding(20);
+    gui.add(controlPanelMandelbrot);
 
     tgui::Label::Ptr mandelbrotLabel = tgui::Label::create("Mandelbrot Settings");
     mandelbrotLabel->setPosition(controlGroupXOffsetMandelbrot, mandelbrotControlsStartY);
@@ -308,7 +319,7 @@ int main() {
     });
     gui.add(ResetMandelbrot);
 
-    tgui::CheckBox::Ptr UpdateMaxIterationsMandelbrot = tgui::CheckBox::create("Update Max Iterations Dynamically");
+    tgui::CheckBox::Ptr UpdateMaxIterationsMandelbrot = tgui::CheckBox::create("Progressive Iterations");
     UpdateMaxIterationsMandelbrot->setPosition(controlGroupXOffsetMandelbrot, tgui::bindBottom(ResetMandelbrot) + controlPadding);
     UpdateMaxIterationsMandelbrot->setSize({controlWidth / 16, 24 / 2});
     UpdateMaxIterationsMandelbrot->onCheck([&]() {
@@ -340,9 +351,19 @@ int main() {
     });
     gui.add(context_switcher_mandelbrot);
 
+    tgui::Panel::Ptr mandelbrotPanelText = tgui::Panel::create();
+    mandelbrotPanelText->setPosition(controlGroupXOffsetMandelbrot - controlPadding / 2, tgui::bindBottom(context_switcher_mandelbrot) + controlPadding * 3);
+    mandelbrotPanelText->setSize({controlWidth * 2 + controlPadding, 250});
+    mandelbrotPanelText->getRenderer()->setBackgroundColor({240, 240, 240, 200});
+    mandelbrotPanelText->getRenderer()->setPadding(20);
+    mandelbrotPanelText->getRenderer()->setBorders(2);
+    mandelbrotPanelText->getRenderer()->setBorderColor({150, 150, 150, 255});
+    mandelbrotPanelText->getRenderer()->setRoundedBorderRadius(10);
+    gui.add(mandelbrotPanelText);
+
     const unsigned int height_of_text_area = 200;
     tgui::TextArea::Ptr custom_code = tgui::TextArea::create();
-    custom_code->setPosition({controlGroupXOffsetMandelbrot, tgui::bindBottom(context_switcher_mandelbrot) + controlPadding});
+    custom_code->setPosition({controlGroupXOffsetMandelbrot, tgui::bindBottom(context_switcher_mandelbrot) + controlPadding * 4});
     custom_code->setSize({controlWidth * 2, height_of_text_area});
     custom_code->setText("new_real = z_real * z_real - z_imag * z_imag + real;\n"
                          "z_imag =  2 * z_real * z_imag + imag;\n");
@@ -353,9 +374,25 @@ int main() {
     parse->setPosition({controlGroupXOffsetMandelbrot, tgui::bindBottom(custom_code) + controlPadding});
     parse->setSize({controlWidth, 24});
     parse->onPress([&](){
+        parse->getRenderer()->setBorderColor(sf::Color::Blue);
         std::string code = custom_code->getText().toStdString();
-        mandelbrotFractal.set_custom_formula(code);
-        juliaFractal.set_custom_formula(code);
+        try {
+            mandelbrotFractal.set_custom_formula(code);
+            parse->getRenderer()->setBorderColor(sf::Color::Green);
+        }
+        catch (const std::exception& e) {
+            parse->getRenderer()->setBorderColor(sf::Color::Red);
+            std::cerr << "Error: " << e.what() << std::endl;
+        }
+        try {
+            juliaFractal.set_custom_formula(code);
+            parse->getRenderer()->setBorderColor(sf::Color::Green);
+        }
+        catch (const std::exception& e) {
+            parse->getRenderer()->setBorderColor(sf::Color::Red);
+            std::cerr << "Error: " << e.what() << std::endl;
+        }
+
         needsMandelbrotRender = true;
         needsJuliaRender = true;
         context_switcher_mandelbrot->setSelectedItem("NVRTC");
@@ -370,9 +407,15 @@ int main() {
     float juliaControlsStartY = static_cast<float>(initialJuliaRes.y) + controlPadding;
 
     tgui::Panel::Ptr juliaPanel = tgui::Panel::create();
-    juliaPanel->setPosition(controlGroupXOffsetJulia - controlPadding, juliaControlsStartY - controlPadding);
-    juliaPanel->setSize({controlWidth + controlPadding * 2, initialJuliaRes.y + controlPadding * 2});
-    juliaPanel->getRenderer()->setBackgroundColor({220, 220, 220, 200});
+    juliaPanel->setPosition(controlGroupXOffsetJulia - controlPadding, juliaControlsStartY - controlPadding / 2);
+    juliaPanel->setSize({controlWidth + controlPadding * 2, 300});
+    juliaPanel->getRenderer()->setBackgroundColor({240, 240, 240, 200});
+
+    juliaPanel->getRenderer()->setPadding(20);
+    juliaPanel->getRenderer()->setBorders(2);
+    juliaPanel->getRenderer()->setBorderColor({150, 150, 150, 255});
+    juliaPanel->getRenderer()->setRoundedBorderRadius(10);
+    gui.add(juliaPanel);
 
 
     tgui::Label::Ptr juliaLabel = tgui::Label::create("Julia Settings");
@@ -380,21 +423,12 @@ int main() {
     juliaLabel->setTextSize(16);
     gui.add(juliaLabel);
 
-    tgui::ComboBox::Ptr paletteSelectorJulia = tgui::ComboBox::create();
-    paletteSelectorJulia->setPosition(controlGroupXOffsetJulia, tgui::bindBottom(juliaLabel) + controlPadding);
-    paletteSelectorJulia->setSize({controlWidth, 24});
-    ComboBoxCreator(paletteSelectorJulia, paletteNames, "HSV");
-    paletteSelectorJulia->onItemSelect([&](const tgui::String& str) {
-        juliaFractal.setPallete(str.toStdString());
-        needsJuliaRender = true;
-    });
-    gui.add(paletteSelectorJulia);
 
     tgui::Slider::Ptr paletteOffsetSliderJulia = tgui::Slider::create();
     paletteOffsetSliderJulia->setMinimum(0);
     paletteOffsetSliderJulia->setMaximum(360);
     paletteOffsetSliderJulia->setValue(0);
-    paletteOffsetSliderJulia->setPosition(controlGroupXOffsetJulia, tgui::bindBottom(paletteSelectorJulia) + controlPadding);
+    paletteOffsetSliderJulia->setPosition(controlGroupXOffsetJulia, tgui::bindBottom(juliaLabel) + controlPadding * 2 + 24);
     paletteOffsetSliderJulia->setSize({controlWidth, 18});
     paletteOffsetSliderJulia->onValueChange([&](float pos) {
         if (juliaFractal.getPallete() == Palletes::HSV || juliaFractal.getPallete() == Palletes::CyclicHSV) {
@@ -403,6 +437,19 @@ int main() {
         }
     });
     gui.add(paletteOffsetSliderJulia);
+
+    tgui::ComboBox::Ptr paletteSelectorJulia = tgui::ComboBox::create();
+    paletteSelectorJulia->setPosition(controlGroupXOffsetJulia, tgui::bindBottom(juliaLabel) + controlPadding);
+    paletteSelectorJulia->setSize({controlWidth, 24});
+    ComboBoxCreator(paletteSelectorJulia, paletteNames, "HSV");
+    paletteSelectorJulia->onItemSelect([&](const tgui::String& str) {
+        std::string paletteName = str.toStdString();
+        if (paletteName != "HSV") paletteOffsetSliderJulia->setEnabled(false);
+        else paletteOffsetSliderJulia->setEnabled(true);
+        juliaFractal.setPallete(str.toStdString());
+        needsJuliaRender = true;
+    });
+    gui.add(paletteSelectorJulia);
 
 
     tgui::EditBox::Ptr resolutionPickerJulia = tgui::EditBox::create();
@@ -534,7 +581,7 @@ int main() {
         progressiveAnimation = !progressiveAnimation;
     });
     gui.add(UpdateIterationsJulia);
-    tgui::CheckBox::Ptr UpdateMaxIterationsJulia = tgui::CheckBox::create("Update Max Iterations Dynamically");
+    tgui::CheckBox::Ptr UpdateMaxIterationsJulia = tgui::CheckBox::create("Progressive Iterations");
     UpdateMaxIterationsJulia->setPosition(controlGroupXOffsetJulia, tgui::bindBottom(UpdateIterationsJulia) + controlPadding);
     UpdateMaxIterationsJulia->setSize({controlWidth / 16, 24 / 2});
     UpdateMaxIterationsJulia->onCheck([&]() {

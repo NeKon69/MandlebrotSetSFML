@@ -865,7 +865,7 @@ void ANTIALIASING_SSAA4(unsigned char* src, unsigned char* dest, unsigned int sr
         if (prog) {
             NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog));
         }
-        return;
+        throw;
     }
     std::cout << "Kernel loaded successfully.\n";
     custom_formula = true;
