@@ -41,9 +41,6 @@ bool isMouseInsideAnyLabelManual(sf::Vector2i mousePos, const std::initializer_l
  * rendering updates, and state management.
  */
 int main() {
-
-    sf::VideoMode::getDesktopMode()
-
     /*
      * Core state variables tracking rendering quality, idle times for automatic
      * quality improvement, and flags indicating whether a re-render is necessary.
@@ -52,7 +49,6 @@ int main() {
     float mandelbrotIdleTimeMs = 0.0f;
     sf::Time juliaIdleTime = sf::Time::Zero;
     sf::Clock frameClock;
-    int cnt_hui = 0;
 
     RenderQuality currentMandelbrotQuality = RenderQuality::good;
     RenderQuality previousMandelbrotQuality = RenderQuality::good;
