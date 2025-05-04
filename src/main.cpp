@@ -16,6 +16,30 @@ void ComboBoxCreator(tgui::ComboBox::Ptr& comboBox, const std::vector<std::strin
     comboBox->setSelectedItem(defaultItem);
 }
 
+sf::FloatRect calculateManualGlobalBounds(const tgui::Panel::Ptr& object) {
+    if (!object) {
+        return sf::FloatRect();
+    }
+    sf::Vector2f globalTopLeft = object->getPosition();
+    sf::Vector2f size = object->getSize();
+    std::cout << "Left corner: " << globalTopLeft.x << " " << globalTopLeft.y << std::endl;
+    std::cout << "Size of widget: " << size.x << " " << size.y << std::endl;
+    return sf::FloatRect(globalTopLeft, size);
+}
+
+bool isMouseInsideAnyLabelManual(sf::Vector2i mousePos, const std::initializer_list<tgui::Panel::Ptr>& objects) {
+    sf::Vector2f mousePosF = static_cast<sf::Vector2f>(mousePos);
+
+    return std::ranges::any_of(objects, [&](const tgui::Panel::Ptr& object) {
+        if (!object) return false;
+        sf::FloatRect globalBounds = calculateManualGlobalBounds(object);
+        return globalBounds.position.x <= mousePosF.x &&
+               globalBounds.position.y <= mousePosF.y &&
+               globalBounds.position.x + globalBounds.size.x >= mousePosF.x &&
+               globalBounds.position.y + globalBounds.size.y >= mousePosF.y;
+    });
+}
+
 /*
  * This function contains the main application logic, running in a separate thread.
  * It initializes the window, UI, fractal renderers, and handles the event loop,
@@ -100,6 +124,9 @@ int main() {
     bool mouseMovedInMandelbrotArea = true;
     bool isZoomingJulia = false;
     bool mouseMovedInJuliaArea = false;
+    
+    bool IsInMandelbrotArea = false;
+    bool IsInJuliaArea = false;
 
 
 
@@ -628,10 +655,17 @@ int main() {
             if (const auto* mouseMoveEvent = event->getIf<sf::Event::MouseMoved>()) {
                 mousePosition = mouseMoveEvent->position;
 
-                bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < mandelbrotFractal.get_resolution().x && mousePosition.y >= 0 && mousePosition.y < mandelbrotFractal.get_resolution().y;
-                bool isInJuliaArea = mousePosition.x >= windowSize.x - mandelbrotFractal.get_resolution().x && mousePosition.x < windowSize.x && mousePosition.y >= 0 && mousePosition.y < mandelbrotFractal.get_resolution().y;
+                bool mouseOverAnyLabel = isMouseInsideAnyLabelManual(mousePosition, {juliaPanel, controlPanelMandelbrot, mandelbrotPanelText});
 
-                if (isInMandelbrotArea) {
+                IsInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < mandelbrotFractal.get_resolution().x &&
+                                     mousePosition.y >= 0 && mousePosition.y < mandelbrotFractal.get_resolution().y &&
+                                     !mouseOverAnyLabel;
+
+                IsInJuliaArea = mousePosition.x >= windowSize.x - juliaFractal.get_resolution().x && mousePosition.x < windowSize.x &&
+                                mousePosition.y >= 0 && mousePosition.y < juliaFractal.get_resolution().y &&
+                                !mouseOverAnyLabel;
+
+                if (IsInMandelbrotArea) {
                     mouseMovedInMandelbrotArea = true;
                     if (showMandelbrotIterationLines) {
                         mandelbrotFractal.drawIterationLines(mousePosition);
@@ -641,7 +675,7 @@ int main() {
                         mandelbrotFractal.dragging(mousePosition);
                     }
                 }
-                else if (isInJuliaArea) {
+                else if (IsInJuliaArea) {
                     mouseMovedInJuliaArea = true;
                     if (juliaFractal.get_is_dragging()) {
                         currentJuliaQuality = RenderQuality::good;
@@ -657,7 +691,7 @@ int main() {
             }
 
             if (const auto* keyPressEvent = event->getIf<sf::Event::KeyPressed>()) {
-                bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < mandelbrotFractal.get_resolution().x && mousePosition.y >= 0 && mousePosition.y < mandelbrotFractal.get_resolution().y;
+                IsInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < mandelbrotFractal.get_resolution().x && mousePosition.y >= 0 && mousePosition.y < mandelbrotFractal.get_resolution().y;
 
                 switch(keyPressEvent->scancode) {
                     case sf::Keyboard::Scancode::Escape:
@@ -665,7 +699,7 @@ int main() {
                         break;
 
                     case sf::Keyboard::Scancode::B:
-                        if (isInMandelbrotArea) {
+                        if (IsInMandelbrotArea) {
                             blockJuliaParameterUpdate = !blockJuliaParameterUpdate;
                             if (!blockJuliaParameterUpdate) needsJuliaRender = true;
                         }
@@ -675,7 +709,7 @@ int main() {
                     case sf::Keyboard::Scancode::S:
                     case sf::Keyboard::Scancode::A:
                     case sf::Keyboard::Scancode::D:
-                        if (isInMandelbrotArea) {
+                        if (IsInMandelbrotArea) {
                             sf::Vector2f direction = {0.f, 0.f};
                             if (keyPressEvent->scancode == sf::Keyboard::Scancode::W) direction.y = 1.f;
                             if (keyPressEvent->scancode == sf::Keyboard::Scancode::S) direction.y = -1.f;
@@ -732,7 +766,7 @@ int main() {
                         break;
                     }
                     case sf::Keyboard::Scancode::F12:
-                        if (isInMandelbrotArea) {
+                        if (IsInMandelbrotArea) {
                             needsMandelbrotRender = true;
                             needsJuliaRender = true;
                         }
@@ -752,17 +786,13 @@ int main() {
 
             if (const auto* mouseWheelEvent = event->getIf<sf::Event::MouseWheelScrolled>()) {
                 float delta = mouseWheelEvent->delta;
-
-                bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < mandelbrotFractal.get_resolution().x && mousePosition.y >= 0 && mousePosition.y < mandelbrotFractal.get_resolution().y;
-                bool isInJuliaArea = mousePosition.x >= windowSize.x - juliaFractal.get_resolution().x && mousePosition.x < windowSize.x && mousePosition.y >= 0 && mousePosition.y < juliaFractal.get_resolution().y;
-
-                if (isInMandelbrotArea) {
+                if (IsInMandelbrotArea) {
                     isZoomingMandelbrot = true;
                     currentMandelbrotQuality = RenderQuality::good;
                     mandelbrotFractal.handleZoom(delta, mousePosition);
                     UpdateMaxIterationsMandelbrot? mandelbrotFractal.set_max_iters( (unsigned int)std::min( std::max( 300.0 / std::sqrt(240.0) * std::sqrt(std::max(1.0, mandelbrotFractal.get_zoom_x())), 50.0), 10000.0 )) : mandelbrotFractal.set_max_iters(maxIterSliderMandelbrot->getValue());
                 }
-                else if (isInJuliaArea) {
+                else if (IsInJuliaArea) {
                     isZoomingJulia = true;
                     currentJuliaQuality = RenderQuality::good;
                     juliaFractal.handleZoom(delta, {int(mousePosition.x - windowSize.x + juliaFractal.get_resolution().x), mousePosition.y});
@@ -772,22 +802,19 @@ int main() {
             }
 
             if (const auto* mouseButtonPressedEvent = event->getIf<sf::Event::MouseButtonPressed>()) {
-                bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < mandelbrotFractal.get_resolution().x && mousePosition.y >= 0 && mousePosition.y < mandelbrotFractal.get_resolution().y;
-                bool isInJuliaArea = mousePosition.x >= windowSize.x - juliaFractal.get_resolution().x && mousePosition.x < windowSize.x && mousePosition.y >= 0 && mousePosition.y < juliaFractal.get_resolution().y;
-
                 if (mouseButtonPressedEvent->button == sf::Mouse::Button::Left) {
-                    if (isInMandelbrotArea) {
+                    if (IsInMandelbrotArea) {
                         isLeftMouseDownMandelbrot = true;
                         currentMandelbrotQuality = RenderQuality::good;
                         mandelbrotFractal.start_dragging(mousePosition);
-                    } else if (isInJuliaArea) {
+                    } else if (IsInJuliaArea) {
                         isLeftMouseDownJulia = true;
                         currentJuliaQuality = RenderQuality::good;
                         juliaFractal.start_dragging(mousePosition);
                     }
                 }
                 else if (mouseButtonPressedEvent->button == sf::Mouse::Button::Right) {
-                    if (isInMandelbrotArea) {
+                    if (IsInMandelbrotArea) {
                         showMandelbrotIterationLines = true;
                         mandelbrotFractal.drawIterationLines(mousePosition);
                         needsMandelbrotRender = true;
@@ -807,8 +834,7 @@ int main() {
                     }
                 }
                 else if (mouseButtonReleasedEvent->button == sf::Mouse::Button::Right) {
-                    bool isInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < mandelbrotFractal.get_resolution().x && mousePosition.y >= 0 && mousePosition.y < mandelbrotFractal.get_resolution().y;
-                    if (isInMandelbrotArea) {
+                    if (IsInMandelbrotArea) {
                         showMandelbrotIterationLines = false;
                     }
                 }
@@ -894,9 +920,6 @@ int main() {
 
         bool renderJuliaThisFrame = false;
         RenderQuality qualityForJuliaRender = currentJuliaQuality;
-        bool isMouseInMandelbrotUpdateArea = mousePosition.x >= 0 && mousePosition.x < mandelbrotFractal.get_resolution().x && mousePosition.y >= 0 && mousePosition.y < mandelbrotFractal.get_resolution().y;
-
-
         if (isTimelapseActive) {
             renderJuliaThisFrame = true;
             qualityForJuliaRender = RenderQuality::good;
@@ -910,7 +933,7 @@ int main() {
             }
 
         }
-        else if (mouseMovedInMandelbrotArea && !blockJuliaParameterUpdate && isMouseInMandelbrotUpdateArea)
+        else if (mouseMovedInMandelbrotArea && !blockJuliaParameterUpdate && IsInMandelbrotArea)
         {
             renderJuliaThisFrame = true;
             isJuliaVisible = true;
@@ -931,9 +954,7 @@ int main() {
             else if (!renderJuliaThisFrame) {
                 const float IDLE_TIME_THRESHOLD_JULIA_MS = 500.0f;
                 bool needsImprovement = juliaIdleTime.asMilliseconds() > IDLE_TIME_THRESHOLD_JULIA_MS;
-                bool isMouseOverMandelbrot = mousePosition.x >= 0 && mousePosition.x < mandelbrotFractal.get_resolution().x && mousePosition.y >= 0 && mousePosition.y < mandelbrotFractal.get_resolution().y;
-
-                if (needsImprovement && !isMouseOverMandelbrot && (currentJuliaQuality != RenderQuality::best || previousJuliaQuality != RenderQuality::best))
+                if (needsImprovement && !IsInMandelbrotArea && (currentJuliaQuality != RenderQuality::best || previousJuliaQuality != RenderQuality::best))
                 {
                     renderJuliaThisFrame = true;
                     qualityForJuliaRender = RenderQuality::best;
