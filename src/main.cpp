@@ -22,8 +22,6 @@ sf::FloatRect calculateManualGlobalBounds(const tgui::Panel::Ptr& object) {
     }
     sf::Vector2f globalTopLeft = object->getPosition();
     sf::Vector2f size = object->getSize();
-    std::cout << "Left corner: " << globalTopLeft.x << " " << globalTopLeft.y << std::endl;
-    std::cout << "Size of widget: " << size.x << " " << size.y << std::endl;
     return sf::FloatRect(globalTopLeft, size);
 }
 
@@ -33,10 +31,7 @@ bool isMouseInsideAnyLabelManual(sf::Vector2i mousePos, const std::initializer_l
     return std::ranges::any_of(objects, [&](const tgui::Panel::Ptr& object) {
         if (!object) return false;
         sf::FloatRect globalBounds = calculateManualGlobalBounds(object);
-        return globalBounds.position.x <= mousePosF.x &&
-               globalBounds.position.y <= mousePosF.y &&
-               globalBounds.position.x + globalBounds.size.x >= mousePosF.x &&
-               globalBounds.position.y + globalBounds.size.y >= mousePosF.y;
+        return globalBounds.contains(mousePosF);
     });
 }
 
@@ -73,7 +68,7 @@ int main() {
      * is used to draw the fractals before displaying them on the main window.
      */
     const sf::Vector2u windowSize = { 2560, 1440 };
-    sf::RenderWindow window(sf::VideoMode(windowSize), "Fractals");
+    sf::RenderWindow window(sf::VideoMode(windowSize), "Fractals", sf::Style::None, sf::State::Fullscreen);
     sf::RenderTexture renderTarget;
     renderTarget = sf::RenderTexture({windowSize.x, windowSize.y});
     sf::Vector2u oldWindowSize = window.getSize();
@@ -790,13 +785,13 @@ int main() {
                     isZoomingMandelbrot = true;
                     currentMandelbrotQuality = RenderQuality::good;
                     mandelbrotFractal.handleZoom(delta, mousePosition);
-                    UpdateMaxIterationsMandelbrot? mandelbrotFractal.set_max_iters( (unsigned int)std::min( std::max( 300.0 / std::sqrt(240.0) * std::sqrt(std::max(1.0, mandelbrotFractal.get_zoom_x())), 50.0), 10000.0 )) : mandelbrotFractal.set_max_iters(maxIterSliderMandelbrot->getValue());
+                    updateIterationsDynamicallyMandelbrot? mandelbrotFractal.set_max_iters( (unsigned int)std::min( std::max( 300.0 / std::sqrt(240.0) * std::sqrt(std::max(1.0, mandelbrotFractal.get_zoom_x())), 50.0), 10000.0 )) : mandelbrotFractal.set_max_iters(maxIterSliderMandelbrot->getValue());
                 }
                 else if (IsInJuliaArea) {
                     isZoomingJulia = true;
                     currentJuliaQuality = RenderQuality::good;
                     juliaFractal.handleZoom(delta, {int(mousePosition.x - windowSize.x + juliaFractal.get_resolution().x), mousePosition.y});
-                    UpdateIterationsJulia? juliaFractal.set_max_iters( (unsigned int)std::min( std::max( 300.0 / std::sqrt(240.0) * std::sqrt(std::max(1.0, juliaFractal.get_zoom_x())), 50.0), 10000.0 )) : juliaFractal.set_max_iters(maxIterSliderJulia->getValue());
+                    updateIterationsDynamicallyJulia? juliaFractal.set_max_iters( (unsigned int)std::min( std::max( 300.0 / std::sqrt(240.0) * std::sqrt(std::max(1.0, juliaFractal.get_zoom_x())), 50.0), 10000.0 )) : juliaFractal.set_max_iters(maxIterSliderJulia->getValue());
                     needsJuliaRender = true;
                 }
             }
