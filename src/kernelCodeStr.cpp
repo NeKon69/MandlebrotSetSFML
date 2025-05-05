@@ -16,6 +16,7 @@ __global__ void fractal_rendering_mandelbrot(
     const unsigned int x =   blockIdx.x * blockDim.x + threadIdx.x;
     const unsigned int y =   blockIdx.y * blockDim.y + threadIdx.y;
     const unsigned int id = threadIdx.y * blockDim.x + threadIdx.x;
+
     if (x == 0 && y == 0) {
         *d_total_iterations = 0;
     }
@@ -33,8 +34,7 @@ __global__ void fractal_rendering_mandelbrot(
         T z_imag = 0.0;
         T current_iteration = 0;
         T z_comp = z_real * z_real + z_imag * z_imag;
-
-        while (z_comp < 4 && current_iteration < maxIterations) {
+        while (z_comp < 100 && current_iteration < maxIterations) {
 )";
 
 
@@ -70,23 +70,23 @@ __global__ void fractal_rendering_julia(
         T current_iteration = 0;
         T z_comp = z_real * z_real + z_imag * z_imag;
 
-        while (z_comp < 4 && current_iteration < maxIterations) {
+        while (z_comp < 100 && current_iteration < maxIterations) {
 )";
 
 std::string ending = R"(
-            z_comp = z_real * z_real + z_imag * z_imag;
             z_real = new_real;
+            z_comp = z_real * z_real + z_imag * z_imag;
             current_iteration++;
         }
 
         total_iterations[id] = static_cast<unsigned int>(current_iteration);
-//        __syncthreads();
+        __syncthreads();
 
         for (unsigned int s = blockDim.x * blockDim.y / 2; s > 0; s >>= 1) {
             if (id < s) {
                 total_iterations[id] += total_iterations[id + s];
             }
-//            __syncthreads();
+            __syncthreads();
         }
         if (id == 0) {
             //d_total_iterations += total_iterations[0];
