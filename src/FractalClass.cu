@@ -1,4 +1,5 @@
 #include "FractalClass.cuh"
+#include "kernelCodeStr.h"
 #include <cuda_runtime.h>
 #include <TGUI/Backend/SFML-Graphics.hpp>
 #include <iostream>
@@ -102,6 +103,18 @@
     MAKE_CURR_CONTEXT_OPERATION(cudaFree(d_total_iterations), cuMemFree(cu_d_total_iterations), context);\
     MAKE_CURR_CONTEXT_OPERATION(cudaFree(d_palette), cuMemFree(cu_palette), context);\
   } while(0)
+
+
+#define INIT_CU_RESOURCES \
+    if (!custom_formula) { \
+        set_context(context_type::NVRTC); \
+    } \
+    CU_SAFE_CALL(cuCtxSetCurrent(ctx)); \
+    nvrtcProgram prog = nullptr; \
+    nvrtcResult compileResult{}; \
+    std::string lowered_kernel_name_float_str; \
+    std::string lowered_kernel_name_double_str; \
+    std::string lowered_kernel_name_ssaa_str;
 
 
 void cpu_render_mandelbrot(render_target target, unsigned char* pixels, unsigned int width, unsigned int height, double zoom_x, double zoom_y,
@@ -222,7 +235,7 @@ FractalBase<Derived>::FractalBase()
     created_context = false;
 
     isCudaAvailable = true;
-    int numDevices;
+    int numDevices = 0;
     cudaGetDeviceCount(&numDevices);
     if(numDevices == 0) {
         std::cout << "IMPORTANT NO AVAILABLE CUDA DEVICES FOUND" << std::endl;
@@ -245,6 +258,7 @@ template <typename Derived>
 FractalBase<Derived>::~FractalBase() {
     FREE_ALL_IMAGE_MEMORY();
     FREE_ALL_NON_IMAGE_MEMORY();
+    if (module_loaded) CU_SAFE_CALL(cuModuleUnload(module));
     MAKE_CURR_CONTEXT_OPERATION(cudaFree(nullptr), cuCtxDestroy(ctx), context);
 }
 
@@ -542,165 +556,10 @@ void FractalBase<Derived>::reset() {
 /// z_imag =  2 * z_real * z_imag + imag;
 /// BEFORE USING THIS FUNCTION MAKE SURE TO SET THE CONTEXT TO NVRTC
 template <>
-void FractalBase<fractals::mandelbrot>::set_custom_formula(const std::string formula) {
-    if(!custom_formula) {
-        set_context(context_type::NVRTC);
-    }
-    CU_SAFE_CALL(cuCtxSetCurrent(ctx));
-    kernel_code = R"(
-#include "../include/fractals/custom.cuh"
-template <typename T>
-__global__ void fractal_rendering(
-        unsigned char* pixels, unsigned long size_of_pixels, unsigned int width, unsigned int height,
-        T zoom_x, T zoom_y, T x_offset, T y_offset,
-        Color* d_palette, unsigned int paletteSize, T maxIterations, unsigned int* d_total_iterations)
-{
-    const unsigned int x =   blockIdx.x * blockDim.x + threadIdx.x;
-    const unsigned int y =   blockIdx.y * blockDim.y + threadIdx.y;
-    const unsigned int id = threadIdx.y * blockDim.x + threadIdx.x;
-    if (x == 0 && y == 0) {
-        *d_total_iterations = 0;
-    }
 
-    const size_t expected_size = width * height * 4;
-
-    const T scale_factor = static_cast<T>(size_of_pixels) / static_cast<T>(expected_size);
-
-    if (x < width && y < height) {
-        __shared__ unsigned int total_iterations[1024];
-        const T real = x / zoom_x - x_offset;
-        const T imag = y / zoom_y - y_offset;
-        T new_real = 0.0;
-        T z_real = 0.0;
-        T z_imag = 0.0;
-        T current_iteration = 0;
-        T z_comp = z_real * z_real + z_imag * z_imag;
-
-        while (z_comp < 4 && current_iteration < maxIterations) {
-)" + formula + R"(
-            z_real = new_real;
-            z_comp = z_real * z_real + z_imag * z_imag;
-            current_iteration++;
-        }
-
-        total_iterations[id] = static_cast<unsigned int>(current_iteration);
-//        __syncthreads();
-
-        for (unsigned int s = blockDim.x * blockDim.y / 2; s > 0; s >>= 1) {
-            if (id < s) {
-                total_iterations[id] += total_iterations[id + s];
-            }
-//            __syncthreads();
-        }
-        if (id == 0) {
-            //d_total_iterations += total_iterations[0];
-            atomicAdd(d_total_iterations, total_iterations[0]);
-        }
-
-        unsigned char r, g, b;
-        if (current_iteration == maxIterations) {
-            r = g = b = 0;
-        }
-
-        else {
-
-            //modulus = hypot(z_real, z_imag);
-            //double escape_radius = 2.0;
-            //if (modulus > escape_radius) {
-            //    double nu = log2(log2(modulus) - log2(escape_radius));
-            //    current_iteration = current_iteration + 1 - nu;
-            //}
-            T smooth_iteration = current_iteration + 1.0f - log2f(log2f(sqrtf(z_real * z_real + z_imag * z_imag)));
-
-            const T cycle_scale_factor = 25.0f;
-            T virtual_pos = smooth_iteration * cycle_scale_factor;
-
-            T normalized_pingpong = fmodf(virtual_pos / static_cast<T>(paletteSize -1), 2.0f);
-            if (normalized_pingpong < 0.0f) {
-                normalized_pingpong += 2.0f;
-            }
-
-            T t_interp;
-            if (normalized_pingpong <= 1.0f) {
-                t_interp = normalized_pingpong;
-            } else {
-                t_interp = 2.0f - normalized_pingpong;
-            }
-
-            T float_index = t_interp * (paletteSize - 1);
-
-            int index1 = static_cast<int>(floorf(float_index));
-            int index2 = min(paletteSize - 1, index1 + 1);
-
-            index1 = max(0, index1);
-
-            T t_local = fmodf(float_index, 1.0f);
-            if (t_local < 0.0f) t_local += 1.0f;
-
-            Color color1 = getPaletteColor(index1, paletteSize, d_palette);
-            Color color2 = getPaletteColor(index2, paletteSize, d_palette);
-
-            float r_f = static_cast<float>(color1.r) + t_local * (static_cast<float>(color2.r) - static_cast<float>(color1.r));
-            float g_f = static_cast<float>(color1.g) + t_local * (static_cast<float>(color2.g) - static_cast<float>(color1.g));
-            float b_f = static_cast<float>(color1.b) + t_local * (static_cast<float>(color2.b) - static_cast<float>(color1.b));
-
-            r = static_cast<unsigned char>(max(0.0f, min(255.0f, r_f)));
-            g = static_cast<unsigned char>(max(0.0f, min(255.0f, g_f)));
-            b = static_cast<unsigned char>(max(0.0f, min(255.0f, b_f)));
-        }
-        const unsigned int base_index = (y * width + x) * 4;
-        for (int i = 0; i < scale_factor * 4; i += 4) {
-            const unsigned int index = base_index + i;
-            pixels[index] = r;
-            pixels[index + 1] = g;
-            pixels[index + 2] = b;
-            pixels[index + 3] = 255;
-        }
-    }
-}
-
-template __global__ void fractal_rendering<float>(
-        unsigned char*, size_t, unsigned int, unsigned int,
-        float, float, float, float,
-        Color*, unsigned int, float, unsigned int*);
-
-template __global__ void fractal_rendering<double>(
-        unsigned char*, size_t, unsigned int, unsigned int,
-        double, double, double, double,
-        Color*, unsigned int, double, unsigned int*);
-
-__global__
-void ANTIALIASING_SSAA4(unsigned char* src, unsigned char* dest, unsigned int src_width, unsigned int src_height, unsigned int dest_width, unsigned int dest_height) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (x < dest_width && y < dest_height) {
-        int r = 0, g = 0, b = 0;
-        for (int i = 0; i < 2; ++i) {
-            for (int j = 0; j < 2; ++j) {
-                int src_x = x * 2 + i;
-                int src_y = y * 2 + j;
-                if (src_x < src_width && src_y < src_height) {
-                    int src_index = (src_y * src_width + src_x) * 4;
-                    r += src[src_index];
-                    g += src[src_index + 1];
-                    b += src[src_index + 2];
-                }
-            }
-        }
-        int dest_index = (y * dest_width + x) * 4;
-        dest[dest_index] = r / 4;
-        dest[dest_index + 1] = g / 4;
-        dest[dest_index + 2] = b / 4;
-        dest[dest_index + 3] = 255;
-    }
-}
-)";
-    nvrtcProgram prog = nullptr;
-    nvrtcResult compileResult;
-    std::string lowered_kernel_name_float_str;
-    std::string lowered_kernel_name_double_str;
-    std::string lowered_kernel_name_ssaa_str;
+std::optional<std::string> FractalBase<fractals::mandelbrot>::set_custom_formula(const std::string formula) {
+    INIT_CU_RESOURCES;
+    kernel_code = beginning_mandelbrot + formula + ending + mandelbrot_predefined + antialiasingCode;
 
     try {
         const std::ifstream header_file("../include/fractals/custom.cuh");
@@ -714,33 +573,15 @@ void ANTIALIASING_SSAA4(unsigned char* src, unsigned char* dest, unsigned int sr
 
         const char *header_data = header_content.c_str();
         constexpr char *header_name = "custom.cuh";
-        const char *headers[] = {header_data};
-        const char *includeNames[] = {header_name};
 
-        NVRTC_SAFE_CALL(nvrtcCreateProgram(&prog, kernel_code.c_str(), "custom.cu", 1, headers, includeNames));
+        NVRTC_SAFE_CALL(nvrtcCreateProgram(&prog, kernel_code.c_str(), "custom_mandelbrot.cu", 1, &header_data, &header_name));
 
-        NVRTC_SAFE_CALL(nvrtcAddNameExpression(prog, "fractal_rendering<float>"));
-        NVRTC_SAFE_CALL(nvrtcAddNameExpression(prog, "fractal_rendering<double>"));
+        NVRTC_SAFE_CALL(nvrtcAddNameExpression(prog, "fractal_rendering_mandelbrot<float>"));
+        NVRTC_SAFE_CALL(nvrtcAddNameExpression(prog, "fractal_rendering_mandelbrot<double>"));
         NVRTC_SAFE_CALL(nvrtcAddNameExpression(prog, "ANTIALIASING_SSAA4"));
 
         std::vector<const char*> compile_options;
-        const char* vcpkg_root = std::getenv("VCPKG_ROOT");
-        if (vcpkg_root == nullptr) {
-            std::cerr << "Warning: VCPKG_ROOT environment variable not set. Assuming a default." << std::endl;
-            vcpkg_root = "/home/progamers/vcpkg";
-        }
-        const std::string triplet = "x64-linux";
-        std::string sfml_include_path = "-I" + std::string(vcpkg_root) + "/installed/" + triplet + "/include";
-        compile_options.push_back(sfml_include_path.c_str());
-
-        std::string system_include_path1 = "-I/usr/include/c++/14.2.1";
-        compile_options.push_back(system_include_path1.c_str());
-
-        std::string system_include_path2 = "-I/usr/include/c++/14.2.1/x86_64-pc-linux-gnu";
-        compile_options.push_back(system_include_path2.c_str());
-
         compile_options.push_back("--gpu-architecture=compute_75");
-
         const char** opts = compile_options.data();
         int num_opts = compile_options.size();
 
@@ -769,7 +610,7 @@ void ANTIALIASING_SSAA4(unsigned char* src, unsigned char* dest, unsigned int sr
             if (prog) {
                 nvrtcDestroyProgram(&prog);
             }
-            return;
+            return "";
         } else {
             std::cout << "NVRTC Compilation Succeeded.\n";
             if (!log.empty() && log.length() > 1) {
@@ -782,27 +623,27 @@ void ANTIALIASING_SSAA4(unsigned char* src, unsigned char* dest, unsigned int sr
 
         const char* lowered_name_float_ptr = nullptr;
         if (prog) {
-            NVRTC_SAFE_CALL(nvrtcGetLoweredName(prog, "fractal_rendering<float>", &lowered_name_float_ptr));
+            NVRTC_SAFE_CALL(nvrtcGetLoweredName(prog, "fractal_rendering_mandelbrot<float>", &lowered_name_float_ptr));
         }
 
         if (lowered_name_float_ptr) {
             lowered_kernel_name_float_str = lowered_name_float_ptr;
         } else {
             // Handle error if name not found after successful compilation (e.g., return)
-            std::cerr << "Error: Could not get lowered name for fractal_rendering<float>\n";
-            if (prog) nvrtcDestroyProgram(&prog); return;
+            std::cerr << "Error: Could not get lowered name for fractal_rendering_mandelbrot<float>\n";
+            if (prog) nvrtcDestroyProgram(&prog); return "";
         }
 
         const char* lowered_name_double_ptr = nullptr;
         if (prog) {
-            NVRTC_SAFE_CALL(nvrtcGetLoweredName(prog, "fractal_rendering<double>", &lowered_name_double_ptr));
+            NVRTC_SAFE_CALL(nvrtcGetLoweredName(prog, "fractal_rendering_mandelbrot<double>", &lowered_name_double_ptr));
         }
 
         if (lowered_name_double_ptr) {
             lowered_kernel_name_double_str = lowered_name_double_ptr;
         } else {
-            std::cerr << "Error: Could not get lowered name for fractal_rendering<double>\n";
-            if (prog) nvrtcDestroyProgram(&prog); return;
+            std::cerr << "Error: Could not get lowered name for fractal_rendering_mandelbrot<double>\n";
+            if (prog) nvrtcDestroyProgram(&prog); return "";
         }
 
         const char* lowered_name_ssaa_ptr = nullptr;
@@ -814,7 +655,7 @@ void ANTIALIASING_SSAA4(unsigned char* src, unsigned char* dest, unsigned int sr
             lowered_kernel_name_ssaa_str = lowered_name_ssaa_ptr;
         } else {
             std::cerr << "Error: Could not get lowered name for ANTIALIASING_SSAA4\n";
-            if (prog) nvrtcDestroyProgram(&prog); return;
+            if (prog) nvrtcDestroyProgram(&prog); return "";
         }
 
 
@@ -869,6 +710,7 @@ void ANTIALIASING_SSAA4(unsigned char* src, unsigned char* dest, unsigned int sr
     }
     std::cout << "Kernel loaded successfully.\n";
     custom_formula = true;
+    return "";
 }
 
 
@@ -876,166 +718,9 @@ template <>
 /// Formula should be like this one\n
 /// new_real = z_real * z_real - z_imag * z_imag + real;\n
 /// z_imag =  2 * z_real * z_imag + imag;
-/// BEFORE USING THIS FUNCTION MAKE SURE TO SET THE CONTEXT TO NVRTC
-void FractalBase<fractals::julia>::set_custom_formula(const std::string formula) {
-    if(!custom_formula) {
-        set_context(context_type::NVRTC);
-    }
-    CU_SAFE_CALL(cuCtxSetCurrent(ctx));
-    kernel_code = R"(
-#include "../include/fractals/custom.cuh"
-template <typename T>
-__global__ void fractal_rendering_julia(
-        unsigned char* pixels, unsigned long size_of_pixels, unsigned int width, unsigned int height,
-        T zoom_x, T zoom_y, T x_offset, T y_offset,
-        Color* d_palette, unsigned int paletteSize, T maxIterations, unsigned int* d_total_iterations, T cReal, T cImaginary)
-{
-    const unsigned int x =   blockIdx.x * blockDim.x + threadIdx.x;
-    const unsigned int y =   blockIdx.y * blockDim.y + threadIdx.y;
-    const unsigned int id = threadIdx.y * blockDim.x + threadIdx.x;
-    if (x == 0 && y == 0) {
-        *d_total_iterations = 0;
-    }
-
-    const size_t expected_size = width * height * 4;
-
-    const T scale_factor = static_cast<T>(size_of_pixels) / static_cast<T>(expected_size);
-
-    if (x < width && y < height) {
-        __shared__ unsigned int total_iterations[1024];
-        T z_real = x / zoom_x - x_offset;
-        T z_imag = y / zoom_y - y_offset;
-        T real = cReal;
-        T imag = cImaginary;
-        T new_real = 0.0;
-        T current_iteration = 0;
-        T z_comp = z_real * z_real + z_imag * z_imag;
-
-        while (z_comp < 4 && current_iteration < maxIterations) {
-)" + formula + R"(
-            z_real = new_real;
-            z_comp = z_real * z_real + z_imag * z_imag;
-            current_iteration++;
-        }
-
-        total_iterations[id] = static_cast<unsigned int>(current_iteration);
-//        __syncthreads();
-
-        for (unsigned int s = blockDim.x * blockDim.y / 2; s > 0; s >>= 1) {
-            if (id < s) {
-                total_iterations[id] += total_iterations[id + s];
-            }
-//            __syncthreads();
-        }
-        if (id == 0) {
-            //d_total_iterations += total_iterations[0];
-            atomicAdd(d_total_iterations, total_iterations[0]);
-        }
-
-        unsigned char r, g, b;
-        if (current_iteration == maxIterations) {
-            r = g = b = 0;
-        }
-
-        else {
-
-            //modulus = hypot(z_real, z_imag);
-            //double escape_radius = 2.0;
-            //if (modulus > escape_radius) {
-            //    double nu = log2(log2(modulus) - log2(escape_radius));
-            //    current_iteration = current_iteration + 1 - nu;
-            //}
-            T smooth_iteration = current_iteration + 1.0f - log2f(log2f(sqrtf(z_real * z_real + z_imag * z_imag)));
-
-            const T cycle_scale_factor = 25.0f;
-            T virtual_pos = smooth_iteration * cycle_scale_factor;
-
-            T normalized_pingpong = fmodf(virtual_pos / static_cast<T>(paletteSize -1), 2.0f);
-            if (normalized_pingpong < 0.0f) {
-                normalized_pingpong += 2.0f;
-            }
-
-            T t_interp;
-            if (normalized_pingpong <= 1.0f) {
-                t_interp = normalized_pingpong;
-            } else {
-                t_interp = 2.0f - normalized_pingpong;
-            }
-
-            T float_index = t_interp * (paletteSize - 1);
-
-            int index1 = static_cast<int>(floorf(float_index));
-            int index2 = min(paletteSize - 1, index1 + 1);
-
-            index1 = max(0, index1);
-
-            T t_local = fmodf(float_index, 1.0f);
-            if (t_local < 0.0f) t_local += 1.0f;
-
-            Color color1 = getPaletteColor(index1, paletteSize, d_palette);
-            Color color2 = getPaletteColor(index2, paletteSize, d_palette);
-
-            float r_f = static_cast<float>(color1.r) + t_local * (static_cast<float>(color2.r) - static_cast<float>(color1.r));
-            float g_f = static_cast<float>(color1.g) + t_local * (static_cast<float>(color2.g) - static_cast<float>(color1.g));
-            float b_f = static_cast<float>(color1.b) + t_local * (static_cast<float>(color2.b) - static_cast<float>(color1.b));
-
-            r = static_cast<unsigned char>(max(0.0f, min(255.0f, r_f)));
-            g = static_cast<unsigned char>(max(0.0f, min(255.0f, g_f)));
-            b = static_cast<unsigned char>(max(0.0f, min(255.0f, b_f)));
-        }
-        const unsigned int base_index = (y * width + x) * 4;
-        for (int i = 0; i < scale_factor * 4; i += 4) {
-            const unsigned int index = base_index + i;
-            pixels[index] = r;
-            pixels[index + 1] = g;
-            pixels[index + 2] = b;
-            pixels[index + 3] = 255;
-        }
-    }
-}
-
-template __global__ void fractal_rendering_julia<float>(
-        unsigned char*, size_t, unsigned int, unsigned int,
-        float, float, float, float,
-        Color*, unsigned int, float, unsigned int*, float, float);
-
-template __global__ void fractal_rendering_julia<double>(
-        unsigned char*, size_t, unsigned int, unsigned int,
-        double, double, double, double,
-        Color*, unsigned int, double, unsigned int*, double, double);
-
-__global__
-void ANTIALIASING_SSAA4(unsigned char* src, unsigned char* dest, unsigned int src_width, unsigned int src_height, unsigned int dest_width, unsigned int dest_height) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (x < dest_width && y < dest_height) {
-        int r = 0, g = 0, b = 0;
-        for (int i = 0; i < 2; ++i) {
-            for (int j = 0; j < 2; ++j) {
-                int src_x = x * 2 + i;
-                int src_y = y * 2 + j;
-                if (src_x < src_width && src_y < src_height) {
-                    int src_index = (src_y * src_width + src_x) * 4;
-                    r += src[src_index];
-                    g += src[src_index + 1];
-                    b += src[src_index + 2];
-                }
-            }
-        }
-        int dest_index = (y * dest_width + x) * 4;
-        dest[dest_index] = r / 4;
-        dest[dest_index + 1] = g / 4;
-        dest[dest_index + 2] = b / 4;
-        dest[dest_index + 3] = 255;
-    }
-}
-)";
-    nvrtcProgram prog = nullptr;
-    nvrtcResult compileResult;
-    std::string lowered_kernel_name_float_str;
-    std::string lowered_kernel_name_double_str;
-    std::string lowered_kernel_name_ssaa_str;
+std::optional<std::string> FractalBase<fractals::julia>::set_custom_formula(const std::string formula) {
+    INIT_CU_RESOURCES;
+    kernel_code = beginning_julia + formula + ending + julia_predefined + antialiasingCode;
 
     try {
         const std::ifstream header_file("../include/fractals/custom.cuh");
@@ -1049,10 +734,8 @@ void ANTIALIASING_SSAA4(unsigned char* src, unsigned char* dest, unsigned int sr
 
         const char *header_data = header_content.c_str();
         constexpr char *header_name = "custom.cuh";
-        const char *headers[] = {header_data};
-        const char *includeNames[] = {header_name};
 
-        NVRTC_SAFE_CALL(nvrtcCreateProgram(&prog, kernel_code.c_str(), "custom.cu", 1, headers, includeNames));
+        NVRTC_SAFE_CALL(nvrtcCreateProgram(&prog, kernel_code.c_str(), "custom_julia.cu", 1, &header_data, &header_name));
 
         NVRTC_SAFE_CALL(nvrtcAddNameExpression(prog, "fractal_rendering_julia<float>"));
         NVRTC_SAFE_CALL(nvrtcAddNameExpression(prog, "fractal_rendering_julia<double>"));
@@ -1104,7 +787,7 @@ void ANTIALIASING_SSAA4(unsigned char* src, unsigned char* dest, unsigned int sr
             if (prog) {
                 NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog));
             }
-            return;
+            return "";
         } else {
             std::cout << "NVRTC Compilation Succeeded.\n";
             if (!log.empty() && log.length() > 1) {
@@ -1125,7 +808,7 @@ void ANTIALIASING_SSAA4(unsigned char* src, unsigned char* dest, unsigned int sr
         } else {
             // Handle error if name not found after successful compilation (e.g., return)
             std::cerr << "Error: Could not get lowered name for fractal_rendering_julia<float>\n";
-            if (prog) NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog)); return;
+            if (prog) NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog)); return "";
         }
 
         const char* lowered_name_double_ptr = nullptr;
@@ -1137,7 +820,7 @@ void ANTIALIASING_SSAA4(unsigned char* src, unsigned char* dest, unsigned int sr
             lowered_kernel_name_double_str = lowered_name_double_ptr;
         } else {
             std::cerr << "Error: Could not get lowered name for fractal_rendering_julia<double>\n";
-            if (prog) NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog)); return;
+            if (prog) NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog)); return "";
         }
 
         const char* lowered_name_ssaa_ptr = nullptr;
@@ -1149,7 +832,7 @@ void ANTIALIASING_SSAA4(unsigned char* src, unsigned char* dest, unsigned int sr
             lowered_kernel_name_ssaa_str = lowered_name_ssaa_ptr;
         } else {
             std::cerr << "Error: Could not get lowered name for ANTIALIASING_SSAA4\n";
-            if (prog) NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog)); return;
+            if (prog) NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog)); return "";
         }
 
 
@@ -1169,13 +852,15 @@ void ANTIALIASING_SSAA4(unsigned char* src, unsigned char* dest, unsigned int sr
             prog = nullptr;
         }
 
-//        if (module) {
-//            CU_SAFE_CALL(cuModuleUnload(module));
-//            module = nullptr;
-//        }
+        if (module_loaded) {
+            CU_SAFE_CALL(cuModuleUnload(module));
+            module = nullptr;
+            module_loaded = false;
+        }
 
         if (!ptx.empty()) {
             CU_SAFE_CALL(cuModuleLoadDataEx(&module, ptx.data(), 0, 0, 0));
+            module_loaded = true;
         }
 
         if (module && !lowered_kernel_name_float_str.empty()) {
@@ -1198,10 +883,11 @@ void ANTIALIASING_SSAA4(unsigned char* src, unsigned char* dest, unsigned int sr
         if (prog) {
             NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog));
         }
-        return;
+        return "";
     }
     std::cout << "Kernel loaded successfully.\n";
     custom_formula = true;
+    return "";
 }
 
 template <typename Derived>

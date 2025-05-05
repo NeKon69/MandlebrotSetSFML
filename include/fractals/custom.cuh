@@ -25,14 +25,14 @@ inline __device__ __host__ Color getPaletteColor(int index, int paletteSize, Col
 }
 
 template <typename T>
-__global__ void fractal_rendering(
+extern __global__ void fractal_rendering_mandelbrot(
         unsigned char* pixels, size_t size_of_pixels, unsigned int width, unsigned int height,
         T zoom_x, T zoom_y, T x_offset, T y_offset,
         Color* d_palette, unsigned int paletteSize, T maxIterations, unsigned int* d_total_iterations
 );
 
 template <typename T>
-__global__ void fractal_rendering_julia(
+extern __global__ void fractal_rendering_julia(
         unsigned char* pixels, size_t size_of_pixels, unsigned int width, unsigned int height,
         T zoom_x, T zoom_y, T x_offset, T y_offset,
         Color* d_palette, unsigned int paletteSize, T maxIterations, unsigned int* d_total_iterations, T cReal, T cImaginary);

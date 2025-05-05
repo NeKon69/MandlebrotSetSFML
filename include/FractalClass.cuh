@@ -240,7 +240,7 @@ public:
 
     void reset();
 
-    void set_custom_formula(std::string formula);
+    std::optional<std::string> set_custom_formula(std::string formula);
 
     context_type get_context();
 

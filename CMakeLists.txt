@@ -5,14 +5,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_ARCHITECTURES "native")
-set(TGUI_DIR "$ENV{HOME}/vcpkg/installed/x64-linux/share/tgui")
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -arch=sm_75")
 
-# Tell CMake to use vcpkg
-set(CMAKE_TOOLCHAIN_FILE "$ENV{HOME}/vcpkg/scripts/buildsystems/vcpkg.cmake" CACHE STRING "Vcpkg toolchain file")
-
 # Find packages using vcpkg
-find_package(SFML 3 COMPONENTS Graphics Window System Network REQUIRED)
+find_package(SFML 3 REQUIRED COMPONENTS Graphics Window System Network )
 find_package(TGUI 1 REQUIRED)
 
 if(NOT CMAKE_BUILD_TYPE)
@@ -28,6 +24,8 @@ endif()
 # Source files
 set(CPP_SOURCES
         src/main.cpp
+        src/kernelCodeStr.cpp
+        include/kernelCodeStr.h
 )
 
 set(CUDA_SOURCES
@@ -55,7 +53,6 @@ set_source_files_properties(${CUDA_SOURCES} PROPERTIES LANGUAGE CUDA)
 
 add_executable(${PROJECT_NAME} ${CPP_SOURCES} ${CUDA_SOURCES})
 
-# Find the CUDA driver library
 find_library(CUDA_DRIVER_LIBRARY cuda)
 if(NOT CUDA_DRIVER_LIBRARY)
     message(FATAL_ERROR "Could not find CUDA driver library")
@@ -81,9 +78,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         SFML::System
         SFML::Network
         TGUI::TGUI
-        Threads::Threads
-        X11
-        dl
         ${CUDA_DRIVER_LIBRARY}  # Link CUDA driver library
         ${NVRTC_LIBRARY}        # Link NVRTC library
 )
