@@ -18,15 +18,15 @@ void ComboBoxCreator(tgui::ComboBox::Ptr& comboBox, const std::vector<std::strin
 
 sf::FloatRect calculateManualGlobalBounds(const tgui::Panel::Ptr& object) {
     if (!object) {
-        return sf::FloatRect();
+        return sf::FloatRect{};
     }
     sf::Vector2f globalTopLeft = object->getPosition();
     sf::Vector2f size = object->getSize();
-    return sf::FloatRect(globalTopLeft, size);
+    return sf::FloatRect{globalTopLeft, size};
 }
 
 bool isMouseInsideAnyLabelManual(sf::Vector2i mousePos, const std::initializer_list<tgui::Panel::Ptr>& objects) {
-    sf::Vector2f mousePosF = static_cast<sf::Vector2f>(mousePos);
+    auto mousePosF = static_cast<sf::Vector2f>(mousePos);
 
     return std::ranges::any_of(objects, [&](const tgui::Panel::Ptr& object) {
         if (!object) return false;

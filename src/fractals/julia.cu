@@ -1,5 +1,4 @@
 #include "julia.cuh"
-#include <iostream>
 
 template<typename T>
 __global__ void fractal_rendering(

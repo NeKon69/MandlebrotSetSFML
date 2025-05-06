@@ -742,21 +742,6 @@ std::optional<std::string> FractalBase<fractals::julia>::set_custom_formula(cons
         NVRTC_SAFE_CALL(nvrtcAddNameExpression(prog, "ANTIALIASING_SSAA4"));
 
         std::vector<const char*> compile_options;
-        const char* vcpkg_root = std::getenv("VCPKG_ROOT");
-        if (vcpkg_root == nullptr) {
-            std::cerr << "Warning: VCPKG_ROOT environment variable not set. Assuming a default." << std::endl;
-            vcpkg_root = "/home/progamers/vcpkg";
-        }
-        const std::string triplet = "x64-linux";
-        std::string sfml_include_path = "-I" + std::string(vcpkg_root) + "/installed/" + triplet + "/include";
-        compile_options.push_back(sfml_include_path.c_str());
-
-        std::string system_include_path1 = "-I/usr/include/c++/14.2.1";
-        compile_options.push_back(system_include_path1.c_str());
-
-        std::string system_include_path2 = "-I/usr/include/c++/14.2.1/x86_64-pc-linux-gnu";
-        compile_options.push_back(system_include_path2.c_str());
-
         compile_options.push_back("--gpu-architecture=compute_75");
 
         const char** opts = compile_options.data();
@@ -1154,7 +1139,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
             };
             CU_SAFE_CALL(cuLaunchKernel(kernelDouble, dimGrid.x, dimGrid.y, 1,
                                         dimBlock.x, dimBlock.y, 1,
-                                        0, nullptr,
+                                        0, CUss,
                                         args, nullptr));
         } else { // Запуск float-версии
             float render_zoom_x_f = static_cast<float>(render_zoom_x_d);
@@ -1179,7 +1164,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
             CU_SAFE_CALL(cuLaunchKernel(kernelFloat,
                                         dimGrid.x, dimGrid.y, 1,
                                         dimBlock.x, dimBlock.y, 1,
-                                        0, nullptr,
+                                        0, CUss,
                                         args, nullptr));
         }
 
@@ -1221,6 +1206,7 @@ void FractalBase<fractals::julia>::render(
     render_state quality,
     double zx, double zy
 ) {
+    std::cout << "Julia set coors: " << zx << " - " << zy << "\n";
     if (!isCudaAvailable) {
         return;
     }
@@ -1290,34 +1276,77 @@ void FractalBase<fractals::julia>::render(
             );
         }
     }
-    else {
+    else { // Custom, Formula handling
         cuCtxSetCurrent(ctx);
-        double maxI = max_iterations;
-        float maxI_f = maxI;
+        dimBlock = dim3(32, 32);
+        dimGrid = dim3(
+                (width + dimBlock.x - 1) / dimBlock.x,
+                (height + dimBlock.y - 1) / dimBlock.y
+        );
 
-        void* args[] = {
-                &cu_d_pixels,
-                &len,
-                &width,
-                &height,
-                &render_zoom_x,
-                &render_zoom_y,
-                &x_offset,
-                &y_offset,
-                &cu_palette,
-                &paletteSize,
-                &maxI,
-                &cu_d_total_iterations,
-                &zx,
-                &zy
-        };
+        size_t len = width * height * 4;
+        double render_zoom_x_d = render_zoom_x;
+        double render_zoom_y_d = render_zoom_y;
+        double x_offset_d = x_offset;
+        double y_offset_d = y_offset;
+        float max_iterations_val = max_iterations;
+        double max_iterations_d = max_iterations;
+        unsigned int paletteSize_val = paletteSize;
+        unsigned int width_val = width;
+        unsigned int height_val = height;
 
-        CUfunction launch_kernel = zoom_x > 1e7 ? kernelDouble : kernelFloat;
-        CU_SAFE_CALL(cuLaunchKernel(launch_kernel,
-                dimGrid.x, dimGrid.y, 1,
-                dimBlock.x, dimBlock.y, 1,
-                0, nullptr,
-                args, nullptr));
+        if (zoom_x > 1e7) {
+            void* args[] = {
+                    &cu_d_pixels,
+                    &len,
+                    &width_val,
+                    &height_val,
+                    &render_zoom_x_d,
+                    &render_zoom_y_d,
+                    &x_offset_d,
+                    &y_offset_d,
+                    &cu_palette,
+                    &paletteSize_val,
+                    &max_iterations_d,
+                    &cu_d_total_iterations,
+                    &zx,
+                    &zy
+            };
+            CU_SAFE_CALL(cuLaunchKernel(kernelDouble, dimGrid.x, dimGrid.y, 1,
+                                        dimBlock.x, dimBlock.y, 1,
+                                        0, CUss,
+                                        args, nullptr));
+        } else { // Запуск float-версии
+            float render_zoom_x_f = static_cast<float>(render_zoom_x_d);
+            float render_zoom_y_f = static_cast<float>(render_zoom_y_d);
+            float x_offset_f = static_cast<float>(x_offset_d);
+            float y_offset_f = static_cast<float>(y_offset_d);
+            float zx_f = static_cast<float>(zx);
+            float zy_f = static_cast<float>(zy);
+
+            void* args[] = {
+                    &cu_d_pixels,
+                    &len,
+                    &width_val,
+                    &height_val,
+                    &render_zoom_x_f,
+                    &render_zoom_y_f,
+                    &x_offset_f,
+                    &y_offset_f,
+                    &cu_palette,
+                    &paletteSize_val,
+                    &max_iterations_val,
+                    &cu_d_total_iterations,
+                    &zx_f,
+                    &zy_f
+            };
+            CU_SAFE_CALL(cuLaunchKernel(kernelFloat,
+                                        dimGrid.x, dimGrid.y, 1,
+                                        dimBlock.x, dimBlock.y, 1,
+                                        0, CUss,
+                                        args, nullptr));
+        }
+
     }
 
     cudaError_t err = cudaGetLastError();
