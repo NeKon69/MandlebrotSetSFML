@@ -95,7 +95,7 @@ std::string ending = R"(
 
         unsigned char r, g, b;
         if (current_iteration == maxIterations) {
-            r = g = b = 100;
+            r = g = b = 0;
         }
 
         else {

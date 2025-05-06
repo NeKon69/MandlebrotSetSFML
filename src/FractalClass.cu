@@ -106,17 +106,206 @@
 
 
 #define INIT_CU_RESOURCES \
-    if (!custom_formula) { \
-        set_context(context_type::NVRTC); \
+  if (!custom_formula) { \
+    set_context(context_type::NVRTC); \
+  } \
+  CU_SAFE_CALL(cuCtxSetCurrent(ctx)); \
+  nvrtcProgram prog = nullptr; \
+  nvrtcResult compileResult{}; \
+  std::string lowered_kernel_name_float_str; \
+  std::string lowered_kernel_name_double_str; \
+  std::string lowered_kernel_name_ssaa_str;
+
+// This macro takes a string as an argument an uses it to define variable names and other stuff, just basic nvrtc stuff
+#define COMPILE_PROGRAM(fractal_name_str) \
+    try { \
+        const std::ifstream header_file("../include/fractals/custom.cuh"); \
+        if (!header_file.is_open()) { \
+            std::cerr << "Error: Could not open header file: ../include/fractals/custom.cuh\n"; \
+            if (prog) { NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog)); prog = nullptr; } \
+            if (module_loaded) { CU_SAFE_CALL(cuModuleUnload(module)); module = nullptr; module_loaded = false; } \
+            return ""; \
+        } \
+        std::stringstream buffer; \
+        buffer << header_file.rdbuf(); \
+        const std::string header_content = buffer.str(); \
+        const char *header_data = header_content.c_str(); \
+        constexpr char *header_name = "custom.cuh"; \
+        \
+        if (prog) { \
+             NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog)); prog = nullptr; \
+        } \
+        NVRTC_SAFE_CALL(nvrtcCreateProgram(&prog, kernel_code.c_str(), ("custom_" fractal_name_str ".cu"), 1, &header_data, &header_name)); \
+        \
+        NVRTC_SAFE_CALL(nvrtcAddNameExpression(prog, ("fractal_rendering_" fractal_name_str "<float>"))); \
+        NVRTC_SAFE_CALL(nvrtcAddNameExpression(prog, ("fractal_rendering_" fractal_name_str "<double>"))); \
+        NVRTC_SAFE_CALL(nvrtcAddNameExpression(prog, "ANTIALIASING_SSAA4")); \
+        \
+        std::vector<const char*> compile_options; \
+        compile_options.push_back("--gpu-architecture=compute_75"); \
+        const char** opts = compile_options.data(); \
+        int num_opts = compile_options.size(); \
+        \
+        compileResult = nvrtcCompileProgram(prog, num_opts, opts); \
+        \
+        size_t logSize = 0; \
+        if (prog) { NVRTC_SAFE_CALL(nvrtcGetProgramLogSize(prog, &logSize)); } \
+        std::string log; \
+        if (logSize > 1 && prog) { \
+            log.resize(logSize); \
+            NVRTC_SAFE_CALL(nvrtcGetProgramLog(prog, &log[0])); \
+        } \
+        \
+        if (compileResult != NVRTC_SUCCESS) { \
+            std::cerr << "---------------------\n"; \
+            std::cerr << "NVRTC Compilation Failed for " fractal_name_str ":\n"; \
+            std::cerr << "Result Code: " << nvrtcGetErrorString(compileResult) << "\n"; \
+            std::cerr << "---------------------\n"; \
+            std::cerr << "Compilation Log:\n"; \
+            std::cerr << log << std::endl; \
+            std::cerr << "---------------------\n"; \
+            if (prog) { NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog)); prog = nullptr; } \
+            return log; \
+        } else { \
+            std::cout << "NVRTC Compilation Succeeded for " fractal_name_str ".\n"; \
+            if (!log.empty() && log.length() > 1) { \
+                std::cout << "---------------------\n"; \
+                std::cout << "Compilation Log (Warnings/Info):\n"; \
+                std::cout << log << std::endl; \
+                std::cout << "---------------------\n"; \
+            } \
+        } \
+        \
+        const char* lowered_name_float_ptr = nullptr; \
+        if (prog) { NVRTC_SAFE_CALL(nvrtcGetLoweredName(prog, ("fractal_rendering_" fractal_name_str "<float>"), &lowered_name_float_ptr)); } \
+        if (!lowered_name_float_ptr) { \
+            std::cerr << "Error: Could not get lowered name for fractal_rendering_" fractal_name_str "<float>\n"; \
+            if (prog) { NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog)); prog = nullptr; } \
+            return ""; \
+        } \
+        lowered_kernel_name_float_str = lowered_name_float_ptr; \
+        \
+        const char* lowered_name_double_ptr = nullptr; \
+        if (prog) { NVRTC_SAFE_CALL(nvrtcGetLoweredName(prog, ("fractal_rendering_" fractal_name_str "<double>"), &lowered_name_double_ptr)); } \
+        if (!lowered_name_double_ptr) { \
+            std::cerr << "Error: Could not get lowered name for fractal_rendering_" fractal_name_str "<double>\n"; \
+            if (prog) { NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog)); prog = nullptr; } \
+            return ""; \
+        } \
+        lowered_kernel_name_double_str = lowered_name_double_ptr; \
+        \
+        const char* lowered_name_ssaa_ptr = nullptr; \
+        if (prog) { NVRTC_SAFE_CALL(nvrtcGetLoweredName(prog, "ANTIALIASING_SSAA4", &lowered_name_ssaa_ptr)); } \
+        if (!lowered_name_ssaa_ptr) { \
+            std::cerr << "Error: Could not get lowered name for ANTIALIASING_SSAA4\n"; \
+            if (prog) { NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog)); prog = nullptr; } \
+            return ""; \
+        } \
+        lowered_kernel_name_ssaa_str = lowered_name_ssaa_ptr; \
+        \
+        size_t ptxSize = 0; \
+        if (prog) { NVRTC_SAFE_CALL(nvrtcGetPTXSize(prog, &ptxSize)); } \
+        std::vector<char> ptx; \
+        if (ptxSize > 0 && prog) { \
+            ptx.resize(ptxSize); \
+            NVRTC_SAFE_CALL(nvrtcGetPTX(prog, ptx.data())); \
+        } else if (ptxSize == 0 && prog) { \
+            std::cerr << "Warning: NVRTC compilation produced 0-byte PTX.\n"; \
+        } \
+        \
+        if (prog) { NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog)); prog = nullptr; } \
+        \
+        if (module_loaded) { \
+            CU_SAFE_CALL(cuModuleUnload(module)); \
+            module = nullptr; \
+            module_loaded = false; \
+        } \
+        kernelFloat = nullptr; \
+        kernelDouble = nullptr; \
+        kernelAntialiasing = nullptr; \
+        \
+        if (ptx.empty()) { \
+            std::cerr << "Error: PTX generation failed or resulted in empty PTX. Cannot load module.\n"; \
+            return ""; \
+        } \
+        CU_SAFE_CALL(cuModuleLoadDataEx(&module, ptx.data(), 0, 0, 0)); \
+        module_loaded = true; \
+        \
+        if (!module) { \
+             std::cerr << "Internal Error: Module is null after successful loading attempt.\n"; \
+             return ""; \
+        } \
+        \
+        if (lowered_kernel_name_float_str.empty()) { \
+             std::cerr << "Internal Error: Float lowered name string is empty.\n"; \
+             if (module_loaded) { cuModuleUnload(module); module = nullptr; module_loaded = false; } \
+             return ""; \
+        } \
+        CU_SAFE_CALL(cuModuleGetFunction(&kernelFloat, module, lowered_kernel_name_float_str.c_str())); \
+        \
+        if (lowered_kernel_name_double_str.empty()) { \
+             std::cerr << "Internal Error: Double lowered name string is empty.\n"; \
+             if (module_loaded) { cuModuleUnload(module); module = nullptr; module_loaded = false; } \
+             return ""; \
+        } \
+        CU_SAFE_CALL(cuModuleGetFunction(&kernelDouble, module, lowered_kernel_name_double_str.c_str())); \
+        \
+        if (lowered_kernel_name_ssaa_str.empty()) { \
+             std::cerr << "Internal Error: SSAA lowered name string is empty.\n"; \
+             if (module_loaded) { cuModuleUnload(module); module = nullptr; module_loaded = false; } \
+             return ""; \
+        } \
+        CU_SAFE_CALL(cuModuleGetFunction(&kernelAntialiasing, module, lowered_kernel_name_ssaa_str.c_str())); \
+        \
+        std::cout << "NVRTC kernel and CUDA module loaded successfully for " fractal_name_str ".\n"; \
+        custom_formula = true; \
+        \
+    } catch (const std::exception& e) { \
+        std::cerr << "Caught Exception during NVRTC/CUDA setup for " fractal_name_str ": " << e.what() << std::endl; \
+        if (prog) { NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog)); prog = nullptr; } \
+        if (module_loaded) { CU_SAFE_CALL(cuModuleUnload(module)); module = nullptr; module_loaded = false; } \
+        kernelFloat = nullptr; kernelDouble = nullptr; kernelAntialiasing = nullptr; \
+        lowered_kernel_name_float_str.clear(); lowered_kernel_name_double_str.clear(); lowered_kernel_name_ssaa_str.clear(); \
+        return ""; \
+    } catch (...) { \
+        std::cerr << "Caught Unknown Exception during NVRTC/CUDA setup for " fractal_name_str << std::endl; \
+        if (prog) { NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog)); prog = nullptr; } \
+        if (module_loaded) { CU_SAFE_CALL(cuModuleUnload(module)); module = nullptr; module_loaded = false; } \
+        kernelFloat = nullptr; kernelDouble = nullptr; kernelAntialiasing = nullptr; \
+        lowered_kernel_name_float_str.clear(); lowered_kernel_name_double_str.clear(); lowered_kernel_name_ssaa_str.clear(); \
+        return ""; \
+    }
+
+#define RECALCULATE_RENDER_PARAMS(quality_arg) \
+    unsigned int old_width = width, old_height = height; \
+    double new_zoom_scale_local; /* Use a local variable for the new scale */ \
+    if ((quality_arg) == render_state::good) { \
+        width = basic_width; \
+        height = basic_height; \
+        antialiasing = false; \
+        new_zoom_scale_local = 1.0; \
+    } else { /* render_state::best */ \
+        width = basic_width * 2; \
+        height = basic_height * 2; \
+        antialiasing = true; \
+        new_zoom_scale_local = 2.0; \
     } \
-    CU_SAFE_CALL(cuCtxSetCurrent(ctx)); \
-    nvrtcProgram prog = nullptr; \
-    nvrtcResult compileResult{}; \
-    std::string lowered_kernel_name_float_str; \
-    std::string lowered_kernel_name_double_str; \
-    std::string lowered_kernel_name_ssaa_str;
-
-
+    if (width != old_width || height != old_height) { \
+        /* Calculate center based on old dimensions and zoom */ \
+        double center_x = x_offset + (double)old_width / (zoom_x * zoom_scale) / 2.0; \
+        double center_y = y_offset + (double)old_height / (zoom_y * zoom_scale) / 2.0; \
+        zoom_scale = new_zoom_scale_local; /* Update member zoom_scale */ \
+        /* Recalculate offset based on new dimensions and updated zoom_scale */ \
+        x_offset = center_x - (double)width / (zoom_x * zoom_scale) / 2.0; \
+        y_offset = center_y - (double)height / (zoom_y * zoom_scale) / 2.0; \
+    } else { \
+        /* If dimensions didn't change, still update zoom_scale member */ \
+        zoom_scale = new_zoom_scale_local; \
+    } \
+    /* These become local variables in the function scope */ \
+    double render_zoom_x = zoom_x * zoom_scale; \
+    double render_zoom_y = zoom_y * zoom_scale; \
+    size_t len = static_cast<size_t>(width) * height * 4;
 void cpu_render_mandelbrot(render_target target, unsigned char* pixels, unsigned int width, unsigned int height, double zoom_x, double zoom_y,
     double x_offset, double y_offset, Color* palette, unsigned int paletteSize,
     unsigned int max_iterations, unsigned int* total_iterations, std::atomic<unsigned char>& finish_flag
@@ -453,6 +642,7 @@ void FractalBase<Derived>::post_processing() {
             (height + dimBlock.y - 1) / dimBlock.y
         );
         if(!custom_formula){
+            // Launch kernel, copy to host, synchronize stream
             ANTIALIASING_SSAA4<<<dimGrid, dimBlock, 0, stream>>>(d_pixels, ssaa_buffer, basic_width * 2, basic_height * 2, basic_width, basic_height);
             cudaMemcpyAsync(compressed, ssaa_buffer, basic_width * basic_height * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost, stream);
             cudaStreamSynchronize(stream);
@@ -551,327 +741,21 @@ void FractalBase<Derived>::reset() {
 //    cudaMemcpy(stopFlagDevice, &flag, sizeof(bool), cudaMemcpyHostToDevice);
 //}
 
+template <typename Derived>
 /// Formula should be like this one\n
 /// new_real = z_real * z_real - z_imag * z_imag + real;\n
 /// z_imag =  2 * z_real * z_imag + imag;
-/// BEFORE USING THIS FUNCTION MAKE SURE TO SET THE CONTEXT TO NVRTC
-template <>
-
-std::optional<std::string> FractalBase<fractals::mandelbrot>::set_custom_formula(const std::string formula) {
+std::optional<std::string> FractalBase<Derived>::set_custom_formula(const std::string formula) {
     INIT_CU_RESOURCES;
-    kernel_code = beginning_mandelbrot + formula + ending + mandelbrot_predefined + antialiasingCode;
-
-    try {
-        const std::ifstream header_file("../include/fractals/custom.cuh");
-        if (!header_file.is_open()) {
-            throw std::runtime_error("Could not open header file: custom.cuh");
-        }
-
-        std::stringstream buffer;
-        buffer << header_file.rdbuf();
-        const std::string header_content = buffer.str();
-
-        const char *header_data = header_content.c_str();
-        constexpr char *header_name = "custom.cuh";
-
-        NVRTC_SAFE_CALL(nvrtcCreateProgram(&prog, kernel_code.c_str(), "custom_mandelbrot.cu", 1, &header_data, &header_name));
-
-        NVRTC_SAFE_CALL(nvrtcAddNameExpression(prog, "fractal_rendering_mandelbrot<float>"));
-        NVRTC_SAFE_CALL(nvrtcAddNameExpression(prog, "fractal_rendering_mandelbrot<double>"));
-        NVRTC_SAFE_CALL(nvrtcAddNameExpression(prog, "ANTIALIASING_SSAA4"));
-
-        std::vector<const char*> compile_options;
-        compile_options.push_back("--gpu-architecture=compute_75");
-        const char** opts = compile_options.data();
-        int num_opts = compile_options.size();
-
-        compileResult = nvrtcCompileProgram(prog, num_opts, opts);
-
-        size_t logSize = 0;
-        if (prog) {
-            NVRTC_SAFE_CALL(nvrtcGetProgramLogSize(prog, &logSize));
-        }
-
-        std::string log;
-        if (logSize > 1) {
-            log.resize(logSize);
-            NVRTC_SAFE_CALL(nvrtcGetProgramLog(prog, &log[0]));
-        }
-
-        if (compileResult != NVRTC_SUCCESS) {
-            std::cerr << "---------------------\n";
-            std::cerr << "NVRTC Compilation Failed:\n";
-            std::cerr << "Result Code: " << nvrtcGetErrorString(compileResult) << "\n";
-            std::cerr << "---------------------\n";
-            std::cerr << "Compilation Log:\n";
-            std::cerr << log << std::endl;
-            std::cerr << "---------------------\n";
-
-            if (prog) {
-                nvrtcDestroyProgram(&prog);
-            }
-            return "";
-        } else {
-            std::cout << "NVRTC Compilation Succeeded.\n";
-            if (!log.empty() && log.length() > 1) {
-                std::cout << "---------------------\n";
-                std::cout << "Compilation Log (Warnings/Info):\n";
-                std::cout << log << std::endl;
-                std::cout << "---------------------\n";
-            }
-        }
-
-        const char* lowered_name_float_ptr = nullptr;
-        if (prog) {
-            NVRTC_SAFE_CALL(nvrtcGetLoweredName(prog, "fractal_rendering_mandelbrot<float>", &lowered_name_float_ptr));
-        }
-
-        if (lowered_name_float_ptr) {
-            lowered_kernel_name_float_str = lowered_name_float_ptr;
-        } else {
-            // Handle error if name not found after successful compilation (e.g., return)
-            std::cerr << "Error: Could not get lowered name for fractal_rendering_mandelbrot<float>\n";
-            if (prog) nvrtcDestroyProgram(&prog); return "";
-        }
-
-        const char* lowered_name_double_ptr = nullptr;
-        if (prog) {
-            NVRTC_SAFE_CALL(nvrtcGetLoweredName(prog, "fractal_rendering_mandelbrot<double>", &lowered_name_double_ptr));
-        }
-
-        if (lowered_name_double_ptr) {
-            lowered_kernel_name_double_str = lowered_name_double_ptr;
-        } else {
-            std::cerr << "Error: Could not get lowered name for fractal_rendering_mandelbrot<double>\n";
-            if (prog) nvrtcDestroyProgram(&prog); return "";
-        }
-
-        const char* lowered_name_ssaa_ptr = nullptr;
-        if (prog) {
-            NVRTC_SAFE_CALL(nvrtcGetLoweredName(prog, "ANTIALIASING_SSAA4", &lowered_name_ssaa_ptr));
-        }
-
-        if (lowered_name_ssaa_ptr) {
-            lowered_kernel_name_ssaa_str = lowered_name_ssaa_ptr;
-        } else {
-            std::cerr << "Error: Could not get lowered name for ANTIALIASING_SSAA4\n";
-            if (prog) nvrtcDestroyProgram(&prog); return "";
-        }
-
-
-        size_t ptxSize = 0;
-        if (prog) {
-            NVRTC_SAFE_CALL(nvrtcGetPTXSize(prog, &ptxSize));
-        }
-
-        std::vector<char> ptx;
-        if (ptxSize > 0 && prog) {
-            ptx.resize(ptxSize);
-            NVRTC_SAFE_CALL(nvrtcGetPTX(prog, ptx.data()));
-        }
-
-        if (prog) {
-            NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog));
-            prog = nullptr;
-        }
-
-        if (module_loaded) {
-            CU_SAFE_CALL(cuModuleUnload(module));
-            module = nullptr;
-            module_loaded = false;
-        }
-
-        if (!ptx.empty()) {
-            CU_SAFE_CALL(cuModuleLoadDataEx(&module, ptx.data(), 0, 0, 0));
-            module_loaded = true;
-        }
-
-        if (module && !lowered_kernel_name_float_str.empty()) {
-            CU_SAFE_CALL(cuModuleGetFunction(&kernelFloat, module, lowered_kernel_name_float_str.c_str()));
-        } else if (!module) { /* Module not loaded */ } else { /* Name string empty, handle as error */ }
-
-
-        if (module && !lowered_kernel_name_double_str.empty()) {
-            CU_SAFE_CALL(cuModuleGetFunction(&kernelDouble, module, lowered_kernel_name_double_str.c_str()));
-        } else if (!module) { /* Module not loaded */ } else { /* Name string empty, handle as error */ }
-
-
-        if (module && !lowered_kernel_name_ssaa_str.empty()) {
-            CU_SAFE_CALL(cuModuleGetFunction(&kernelAntialiasing, module, lowered_kernel_name_ssaa_str.c_str()));
-        } else if (!module) { /* Module not loaded */ } else { /* Name string empty, handle as error */ }
-
-
-    } catch (const std::exception& e) {
-        std::cerr << "Exception in NVRTC setup/compilation/loading: " << e.what() << std::endl;
-        if (prog) {
-            NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog));
-        }
-        throw;
+    switch(std::is_same<Derived, fractals::julia>::value){
+        case 1:
+            kernel_code = beginning_julia + formula + ending + julia_predefined + antialiasingCode;
+            COMPILE_PROGRAM("julia");
+            break;
+        case 0:
+            kernel_code = beginning_mandelbrot + formula + ending + mandelbrot_predefined + antialiasingCode;
+            COMPILE_PROGRAM("mandelbrot");
     }
-    std::cout << "Kernel loaded successfully.\n";
-    custom_formula = true;
-    return "";
-}
-
-
-template <>
-/// Formula should be like this one\n
-/// new_real = z_real * z_real - z_imag * z_imag + real;\n
-/// z_imag =  2 * z_real * z_imag + imag;
-std::optional<std::string> FractalBase<fractals::julia>::set_custom_formula(const std::string formula) {
-    INIT_CU_RESOURCES;
-    kernel_code = beginning_julia + formula + ending + julia_predefined + antialiasingCode;
-
-    try {
-        const std::ifstream header_file("../include/fractals/custom.cuh");
-        if (!header_file.is_open()) {
-            throw std::runtime_error("Could not open header file: custom.cuh");
-        }
-
-        std::stringstream buffer;
-        buffer << header_file.rdbuf();
-        const std::string header_content = buffer.str();
-
-        const char *header_data = header_content.c_str();
-        constexpr char *header_name = "custom.cuh";
-
-        NVRTC_SAFE_CALL(nvrtcCreateProgram(&prog, kernel_code.c_str(), "custom_julia.cu", 1, &header_data, &header_name));
-
-        NVRTC_SAFE_CALL(nvrtcAddNameExpression(prog, "fractal_rendering_julia<float>"));
-        NVRTC_SAFE_CALL(nvrtcAddNameExpression(prog, "fractal_rendering_julia<double>"));
-        NVRTC_SAFE_CALL(nvrtcAddNameExpression(prog, "ANTIALIASING_SSAA4"));
-
-        std::vector<const char*> compile_options;
-        compile_options.push_back("--gpu-architecture=compute_75");
-
-        const char** opts = compile_options.data();
-        int num_opts = compile_options.size();
-
-        compileResult = nvrtcCompileProgram(prog, num_opts, opts);
-
-        size_t logSize = 0;
-        if (prog) {
-            NVRTC_SAFE_CALL(nvrtcGetProgramLogSize(prog, &logSize));
-        }
-
-        std::string log;
-        if (logSize > 1) {
-            log.resize(logSize);
-            NVRTC_SAFE_CALL(nvrtcGetProgramLog(prog, &log[0]));
-        }
-
-        if (compileResult != NVRTC_SUCCESS) {
-            std::cerr << "---------------------\n";
-            std::cerr << "NVRTC Compilation Failed:\n";
-            std::cerr << "Result Code: " << nvrtcGetErrorString(compileResult) << "\n";
-            std::cerr << "---------------------\n";
-            std::cerr << "Compilation Log:\n";
-            std::cerr << log << std::endl;
-            std::cerr << "---------------------\n";
-
-            if (prog) {
-                NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog));
-            }
-            return "";
-        } else {
-            std::cout << "NVRTC Compilation Succeeded.\n";
-            if (!log.empty() && log.length() > 1) {
-                std::cout << "---------------------\n";
-                std::cout << "Compilation Log (Warnings/Info):\n";
-                std::cout << log << std::endl;
-                std::cout << "---------------------\n";
-            }
-        }
-
-        const char* lowered_name_float_ptr = nullptr;
-        if (prog) {
-            NVRTC_SAFE_CALL(nvrtcGetLoweredName(prog, "fractal_rendering_julia<float>", &lowered_name_float_ptr));
-        }
-
-        if (lowered_name_float_ptr) {
-            lowered_kernel_name_float_str = lowered_name_float_ptr;
-        } else {
-            // Handle error if name not found after successful compilation (e.g., return)
-            std::cerr << "Error: Could not get lowered name for fractal_rendering_julia<float>\n";
-            if (prog) NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog)); return "";
-        }
-
-        const char* lowered_name_double_ptr = nullptr;
-        if (prog) {
-            NVRTC_SAFE_CALL(nvrtcGetLoweredName(prog, "fractal_rendering_julia<double>", &lowered_name_double_ptr));
-        }
-
-        if (lowered_name_double_ptr) {
-            lowered_kernel_name_double_str = lowered_name_double_ptr;
-        } else {
-            std::cerr << "Error: Could not get lowered name for fractal_rendering_julia<double>\n";
-            if (prog) NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog)); return "";
-        }
-
-        const char* lowered_name_ssaa_ptr = nullptr;
-        if (prog) {
-            NVRTC_SAFE_CALL(nvrtcGetLoweredName(prog, "ANTIALIASING_SSAA4", &lowered_name_ssaa_ptr));
-        }
-
-        if (lowered_name_ssaa_ptr) {
-            lowered_kernel_name_ssaa_str = lowered_name_ssaa_ptr;
-        } else {
-            std::cerr << "Error: Could not get lowered name for ANTIALIASING_SSAA4\n";
-            if (prog) NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog)); return "";
-        }
-
-
-        size_t ptxSize = 0;
-        if (prog) {
-            NVRTC_SAFE_CALL(nvrtcGetPTXSize(prog, &ptxSize));
-        }
-
-        std::vector<char> ptx;
-        if (ptxSize > 0 && prog) {
-            ptx.resize(ptxSize);
-            NVRTC_SAFE_CALL(nvrtcGetPTX(prog, ptx.data()));
-        }
-
-        if (prog) {
-            NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog));
-            prog = nullptr;
-        }
-
-        if (module_loaded) {
-            CU_SAFE_CALL(cuModuleUnload(module));
-            module = nullptr;
-            module_loaded = false;
-        }
-
-        if (!ptx.empty()) {
-            CU_SAFE_CALL(cuModuleLoadDataEx(&module, ptx.data(), 0, 0, 0));
-            module_loaded = true;
-        }
-
-        if (module && !lowered_kernel_name_float_str.empty()) {
-            CU_SAFE_CALL(cuModuleGetFunction(&kernelFloat, module, lowered_kernel_name_float_str.c_str()));
-        } else if (!module) { /* Module not loaded */ } else { /* Name string empty, handle as error */ }
-
-
-        if (module && !lowered_kernel_name_double_str.empty()) {
-            CU_SAFE_CALL(cuModuleGetFunction(&kernelDouble, module, lowered_kernel_name_double_str.c_str()));
-        } else if (!module) { /* Module not loaded */ } else { /* Name string empty, handle as error */ }
-
-
-        if (module && !lowered_kernel_name_ssaa_str.empty()) {
-            CU_SAFE_CALL(cuModuleGetFunction(&kernelAntialiasing, module, lowered_kernel_name_ssaa_str.c_str()));
-        } else if (!module) { /* Module not loaded */ } else { /* Name string empty, handle as error */ }
-
-
-    } catch (const std::exception& e) {
-        std::cerr << "Exception in NVRTC setup/compilation/loading: " << e.what() << std::endl;
-        if (prog) {
-            NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog));
-        }
-        return "";
-    }
-    std::cout << "Kernel loaded successfully.\n";
-    custom_formula = true;
     return "";
 }
 
@@ -923,6 +807,16 @@ context_type FractalBase<Derived>::get_context() { return context; }
 
 template <typename Derived>
 bool FractalBase<Derived>::get_bool_custom_formula() { return custom_formula; }
+
+template <typename Derived>
+void FractalBase<Derived>::set_grid(dim3 block) {
+    dimBlock = block;
+    dimGrid = dim3(
+            (width + dimBlock.x - 1) / dimBlock.x,
+            (height + dimBlock.y - 1) / dimBlock.y
+    );
+
+}
 
 template <>
 void FractalBase<fractals::mandelbrot>::render(render_state quality) {
@@ -1046,43 +940,10 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
         return;
 
     } // End of if (!isCudaAvailable)
-    unsigned int old_width = width, old_height = height;
-
-    double new_zoom_scale;
-
-    if (quality == render_state::good) {
-        width = basic_width;
-        height = basic_height;
-        antialiasing = false;
-        new_zoom_scale = 1.0;
-    }
-    else { // render_state::best, Antialiasing -> more pixels need to be rendered
-        width = basic_width * 2;
-        height = basic_height * 2;
-        antialiasing = true;
-        new_zoom_scale = 2.0;
-    }
-
-    if (width != old_width || height != old_height) {
-        double center_x = x_offset + (old_width / (zoom_x * zoom_scale)) / 2.0;
-        double center_y = y_offset + (old_height / (zoom_y * zoom_scale)) / 2.0;
-
-        zoom_scale = new_zoom_scale;
-
-        x_offset = center_x - (width / (zoom_x * zoom_scale)) / 2.0;
-        y_offset = center_y - (height / (zoom_y * zoom_scale)) / 2.0;
-    }
-
-    double render_zoom_x = zoom_x * zoom_scale;
-    double render_zoom_y = zoom_y * zoom_scale;
-    size_t len = width * height * 4;
+    RECALCULATE_RENDER_PARAMS(quality);
     if(!custom_formula){
         if (render_zoom_x > 1e7) {
-            dimBlock = dim3(10, 10);
-            dimGrid = dim3(
-                    (width + dimBlock.x - 1) / dimBlock.x,
-                    (height + dimBlock.y - 1) / dimBlock.y
-            );
+            set_grid({10, 10});
             fractal_rendering<double><<<dimGrid, dimBlock, 0, stream>>>(
                     d_pixels, len, width, height, render_zoom_x, render_zoom_y,
                     x_offset, y_offset, d_palette, paletteSize,
@@ -1090,11 +951,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
             );
         }
         else {
-            dimBlock = dim3(32, 32);
-            dimGrid = dim3(
-                    (width + dimBlock.x - 1) / dimBlock.x,
-                    (height + dimBlock.y - 1) / dimBlock.y
-            );
+            set_grid({32, 32});
 
             fractal_rendering<float><<<dimGrid, dimBlock, 0, stream>>>(
                     d_pixels, len, width, height, render_zoom_x, render_zoom_y,
@@ -1105,13 +962,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
     }
     else { // Custom, Formula handling
         cuCtxSetCurrent(ctx);
-        dimBlock = dim3(32, 32);
-        dimGrid = dim3(
-                (width + dimBlock.x - 1) / dimBlock.x,
-                (height + dimBlock.y - 1) / dimBlock.y
-        );
 
-        size_t len = width * height * 4;
         double render_zoom_x_d = render_zoom_x;
         double render_zoom_y_d = render_zoom_y;
         double x_offset_d = x_offset;
@@ -1123,6 +974,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
         unsigned int height_val = height;
 
         if (zoom_x > 1e7) {
+            set_grid({10, 10});
             void* args[] = {
                     &cu_d_pixels,
                     &len,
@@ -1142,6 +994,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
                                         0, CUss,
                                         args, nullptr));
         } else { // Запуск float-версии
+            set_grid({32, 32});
             float render_zoom_x_f = static_cast<float>(render_zoom_x_d);
             float render_zoom_y_f = static_cast<float>(render_zoom_y_d);
             float x_offset_f = static_cast<float>(x_offset_d);
@@ -1173,10 +1026,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
 
     cudaError_t err = cudaGetLastError();
     while (err != cudaSuccess && context != context_type::NVRTC) {
-        dimBlock.x -= 2;
-        dimBlock.y -= 2;
-        dimGrid.x = (width + dimBlock.x - 1) / dimBlock.x;
-        dimGrid.y = (height + dimBlock.y - 1) / dimBlock.y;
+        set_grid({dimBlock.x - 2, dimBlock.y - 2});
         if (zoom_x > 1e7) {
             fractal_rendering<double><<<dimGrid, dimBlock, 0, stream>>>(
                 d_pixels, len, width, height, render_zoom_x, render_zoom_y,
@@ -1206,49 +1056,10 @@ void FractalBase<fractals::julia>::render(
     render_state quality,
     double zx, double zy
 ) {
-    std::cout << "Julia set coors: " << zx << " - " << zy << "\n";
     if (!isCudaAvailable) {
         return;
     }
-
-    unsigned int old_width = width, old_height = height;
-
-    double new_zoom_scale;
-
-    if (quality == render_state::good) {
-        width = basic_width;
-        height = basic_height;
-        antialiasing = false;
-        new_zoom_scale = 1.0;
-    }
-    else { // render_state::best, Antialiasing -> more pixels need to be rendered
-        width = basic_width * 2;
-        height = basic_height * 2;
-        antialiasing = true;
-        new_zoom_scale = 2.0;
-    }
-
-    if (width != old_width || height != old_height) {
-        double center_x = x_offset + (old_width / (zoom_x * zoom_scale)) / 2.0;
-        double center_y = y_offset + (old_height / (zoom_y * zoom_scale)) / 2.0;
-
-        zoom_scale = new_zoom_scale;
-
-        x_offset = center_x - (width / (zoom_x * zoom_scale)) / 2.0;
-        y_offset = center_y - (height / (zoom_y * zoom_scale)) / 2.0;
-    }
-
-    double render_zoom_x = zoom_x * zoom_scale;
-    double render_zoom_y = zoom_y * zoom_scale;
-
-    dim3 dimBlock(32, 32);
-    dim3 dimGrid(
-        (width + dimBlock.x - 1) / dimBlock.x,
-        (height + dimBlock.y - 1) / dimBlock.y
-    );
-
-
-    size_t len = width * height * 4;
+    RECALCULATE_RENDER_PARAMS(quality);
 
     if(!custom_formula){
         if (render_zoom_x > 1e7) {
@@ -1284,7 +1095,6 @@ void FractalBase<fractals::julia>::render(
                 (height + dimBlock.y - 1) / dimBlock.y
         );
 
-        size_t len = width * height * 4;
         double render_zoom_x_d = render_zoom_x;
         double render_zoom_y_d = render_zoom_y;
         double x_offset_d = x_offset;

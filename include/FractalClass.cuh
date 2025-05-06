@@ -236,6 +236,8 @@ public:
 
     void set_resolution(sf::Vector2i target_resolution);
 
+    void set_grid(dim3 block);
+
     void post_processing();
 
     void reset();

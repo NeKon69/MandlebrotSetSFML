@@ -5,7 +5,6 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_ARCHITECTURES "native")
-set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -arch=sm_75")
 
 # Find packages using vcpkg
 find_package(SFML 3 REQUIRED COMPONENTS Graphics Window System Network )
@@ -87,4 +86,20 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
         CUDA_RESOLVE_DEVICE_SYMBOLS ON
         CUDA_RUNTIME_LIBRARY "Shared"
         CUDA_ARCHITECTURES "native"
+)
+
+
+target_compile_options(${PROJECT_NAME} PRIVATE
+        # C++ Host Compiler Flags (for GCC/Clang)
+        $<$<AND:$<CXX_COMPILER_ID:GNU>,$<CONFIG:Release>>:-O3>
+        $<$<AND:$<CXX_COMPILER_ID:Clang>,$<CONFIG:Release>>:-O3>
+        $<$<AND:$<CXX_COMPILER_ID:GNU>,$<CONFIG:Release>>:-ffast-math>
+        $<$<AND:$<CXX_COMPILER_ID:Clang>,$<CONFIG:Release>>:-ffast-math>
+        $<$<AND:$<CXX_COMPILER_ID:GNU>,$<CONFIG:Release>>:-march=native>
+        $<$<AND:$<CXX_COMPILER_ID:Clang>,$<CONFIG:Release>>:-march=native>
+
+        $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Release>>:/Ox>
+        $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Release>>:/fp:fast>
+        $<$<AND:$<CUDA_COMPILER_ID:NVIDIA>,$<CONFIG:Release>>:-O3>
+        $<$<AND:$<CUDA_COMPILER_ID:NVIDIA>,$<CONFIG:Release>>:-use_fast_math>
 )

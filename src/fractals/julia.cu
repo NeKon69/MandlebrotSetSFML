@@ -17,7 +17,6 @@ __global__ void fractal_rendering(
 
     const size_t expected_size = width * height * 4;
     const T scale_factor = static_cast<T>(size_of_pixels) / static_cast<T>(expected_size);
-
     if (x < width && y < height) {
         __shared__ unsigned int total_iterations[1024];
         T z_real = x / zoom_x - x_offset;
