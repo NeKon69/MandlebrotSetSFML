@@ -24,9 +24,6 @@
     }                                                             \
 } while(0)
 
-#define ALLOC_AND_COPY_TO_DEVICE_CU(cu_devPtr, hostVar, type, num)          \
-  CU_SAFE_CALL(cuMemAlloc(&cu_devPtr, sizeof(type) * num));               \
-  CU_SAFE_CALL(cuMemcpyHtoD(cu_devPtr, &hostVar, sizeof(type) * num));
 
 #define CUDA_SAFE_CALL(x) \
   do {                    \
@@ -100,7 +97,7 @@
 
 
 #define INIT_CU_RESOURCES \
-  if (!custom_formula) { \
+  if (!custom_formula) {  \
     set_context(context_type::NVRTC); \
   } \
   CU_SAFE_CALL(cuCtxSetCurrent(ctx)); \
@@ -157,8 +154,9 @@
             std::cerr << "---------------------\n"; \
             std::cerr << "Compilation Log:\n"; \
             std::cerr << log << std::endl; \
-            std::cerr << "---------------------\n"; \
-            if (prog) { NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog)); prog = nullptr; } \
+            std::cerr << "---------------------\n\n"; \
+            if (prog) { NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog)); prog = nullptr; }          \
+            if(!module_loaded) { set_context(context_type::CUDA); }\
             return log; \
         } else { \
             std::cout << "NVRTC Compilation Succeeded for " fractal_name_str ".\n"; \
@@ -166,7 +164,7 @@
                 std::cout << "---------------------\n"; \
                 std::cout << "Compilation Log (Warnings/Info):\n"; \
                 std::cout << log << std::endl; \
-                std::cout << "---------------------\n"; \
+                std::cout << "---------------------\n\n"; \
             } \
         } \
         \

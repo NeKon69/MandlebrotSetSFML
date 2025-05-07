@@ -50,16 +50,28 @@ set(CUDA_SOURCES
 
 )
 
-set(SOURCE_RESOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/fonts)
+set(SOURCE_FONT_RESOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/fonts)
 
-if(EXISTS ${SOURCE_RESOURCE_DIR})
-    message(STATUS "Found fonts directory: ${SOURCE_RESOURCE_DIR}")
+if(EXISTS ${SOURCE_FONT_RESOURCE_DIR})
+    message(STATUS "Found fonts directory: ${SOURCE_FONT_RESOURCE_DIR}")
     set(DESTINATION_DIR ${CMAKE_BINARY_DIR})
     message(STATUS "Build directory (CMAKE_BINARY_DIR): ${DESTINATION_DIR}")
-    file(COPY ${SOURCE_RESOURCE_DIR} DESTINATION ${DESTINATION_DIR})
-    message(STATUS "Configured copying ${SOURCE_RESOURCE_DIR} to ${DESTINATION_DIR}")
+    file(COPY ${SOURCE_FONT_RESOURCE_DIR} DESTINATION ${DESTINATION_DIR})
+    message(STATUS "Configured copying ${SOURCE_FONT_RESOURCE_DIR} to ${DESTINATION_DIR}")
 else()
-    message(WARNING "Fonts directory not found at ${SOURCE_RESOURCE_DIR}. Fonts will not be copied.")
+    message(WARNING "Fonts directory not found at ${SOURCE_FONT_RESOURCE_DIR}. Fonts will not be copied.")
+endif()
+
+set(SOURCE_IMAGES_RESOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Images)
+
+if(EXISTS ${SOURCE_IMAGES_RESOURCE_DIR})
+    message(STATUS "Found images directory: ${SOURCE_IMAGES_RESOURCE_DIR}")
+    set(DESTINATION_DIR ${CMAKE_BINARY_DIR})
+    message(STATUS "Build directory (CMAKE_BINARY_DIR): ${DESTINATION_DIR}")
+    file(COPY ${SOURCE_IMAGES_RESOURCE_DIR} DESTINATION ${DESTINATION_DIR})
+    message(STATUS "Configured copying ${SOURCE_IMAGES_RESOURCE_DIR} to ${DESTINATION_DIR}")
+else()
+    message(WARNING "Images directory not found at ${SOURCE_IMAGES_RESOURCE_DIR}. Images will not be copied.")
 endif()
 
 set_source_files_properties(${CUDA_SOURCES} PROPERTIES LANGUAGE CUDA)

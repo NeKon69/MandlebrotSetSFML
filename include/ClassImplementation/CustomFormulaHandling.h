@@ -15,14 +15,13 @@ template <typename Derived>
 /// z_imag =  2 * z_real * z_imag + imag;
 std::optional<std::string> FractalBase<Derived>::set_custom_formula(const std::string formula) {
     INIT_CU_RESOURCES;
-    switch(std::is_same<Derived, fractals::julia>::value){
-        case 1:
-            kernel_code = beginning_julia + formula + ending + julia_predefined + antialiasingCode;
-            COMPILE_PROGRAM("julia");
-            break;
-        case 0:
-            kernel_code = beginning_mandelbrot + formula + ending + mandelbrot_predefined + antialiasingCode;
-            COMPILE_PROGRAM("mandelbrot");
+    if(std::is_same<Derived, fractals::julia>::value){
+        kernel_code = beginning_julia + formula + ending + julia_predefined + antialiasingCode;
+        COMPILE_PROGRAM("julia");
+    }
+    else {
+        kernel_code = beginning_mandelbrot + formula + ending + mandelbrot_predefined + antialiasingCode;
+        COMPILE_PROGRAM("mandelbrot");
     }
     return "";
 }
@@ -33,6 +32,7 @@ template <typename Derived>
 /// It frees existing resources and allocates new ones based on the selected context.
 void FractalBase<Derived>::set_context(context_type contx) {
     if(contx == context) return;
+    std::cout << "Switching context of fractal(" << (std::is_same<Derived, fractals::julia>::value? "Julia" : "Mandelbrot") << ")from " << (context == context_type::CUDA ? "CUDA" : "NVRTC") << " to " << (contx == context_type::CUDA ? "CUDA" : "NVRTC") << std::endl;
 
     // Free existing resources
     FREE_ALL_IMAGE_MEMORY();

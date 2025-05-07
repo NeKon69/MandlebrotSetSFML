@@ -78,7 +78,6 @@ void FractalBase<fractals::julia>::render(
                 // Edge case: image has dimensions, but no threads assigned (e.g., height too small or clamped).
                 return; // Exit lambda.
             }
-            std::cerr << "DEBUG: Launching Julia render with seed: zx=" << zx << ", zy=" << zy << std::endl;
             // --- Launch Worker Threads ---
             for (unsigned int i = 0; i < actual_threads_to_launch; ++i) {
                 // Set flag state to '0' (working).

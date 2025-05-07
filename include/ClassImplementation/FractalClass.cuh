@@ -72,7 +72,6 @@ struct RenderGuard {
     }
 };
 static bool initialized_nvrtc;
-static bool created_context;
 
 using PaletteCreator = std::function<std::vector<uint8_t>(unsigned int)>;
 
@@ -114,6 +113,7 @@ protected:
     CUdevice device;
     CUmodule module;
     bool module_loaded = false;
+    bool created_context;
     CUfunction kernelFloat;
     CUfunction kernelDouble;
     CUfunction kernelAntialiasing;
