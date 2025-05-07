@@ -36,6 +36,7 @@ FractalBase<Derived>::FractalBase()
         std::cout << "Please make sure you have CUDA installed and your GPU supports it" << std::endl;
         isCudaAvailable = false;
     }
+    isCudaAvailable = false;
     palette = createHSVPalette(20000);
     paletteSize = 20000;
 

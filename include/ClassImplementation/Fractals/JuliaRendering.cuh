@@ -11,6 +11,7 @@ void FractalBase<fractals::julia>::render(
         render_state quality,
         double zx, double zy
 ) {
+    zreal = zx, zimag = zy;
     if (!isCudaAvailable) {
         // --- CPU Rendering Fallback ---
         // This block executes only if CUDA (GPU acceleration) is not available.
@@ -77,7 +78,7 @@ void FractalBase<fractals::julia>::render(
                 // Edge case: image has dimensions, but no threads assigned (e.g., height too small or clamped).
                 return; // Exit lambda.
             }
-
+            std::cerr << "DEBUG: Launching Julia render with seed: zx=" << zx << ", zy=" << zy << std::endl;
             // --- Launch Worker Threads ---
             for (unsigned int i = 0; i < actual_threads_to_launch; ++i) {
                 // Set flag state to '0' (working).
@@ -87,7 +88,7 @@ void FractalBase<fractals::julia>::render(
                 // Launch the actual rendering function (e.g., cpu_render_mandelbrot) in a new thread.
                 std::thread t(cpu_render_julia, render_targets[i], pixels, basic_width, basic_height,
                               zoom_x, zoom_y, x_offset, y_offset, palette.data(), paletteSize,
-                              max_iterations, h_total_iterations, std::ref(thread_stop_flags[i]), zx, zy); // Pass flag by ref
+                              max_iterations, h_total_iterations, std::ref(thread_stop_flags[i]), zreal, zimag); // Pass flag by ref
 
                 // Detach the worker thread: The main_thread won't wait (join) for it directly.
                 // Completion is tracked using the atomic stop flags.
@@ -256,7 +257,6 @@ void FractalBase<fractals::julia>::render(
             std::cout << "Critical Issue (julia set): " << cudaGetErrorString(err) << "\n";
         }
     }
-    zreal = zx, zimag = zy;
     ++counter;
     post_processing();
 }
