@@ -1,5 +1,5 @@
 #include <TGUI/TGUI.hpp>
-#include "FractalClass.cuh"
+#include "ClassImplementation/FractalClass.cuh"
 #include <SFML/Graphics.hpp>
 #include <iostream>
 #include <thread>

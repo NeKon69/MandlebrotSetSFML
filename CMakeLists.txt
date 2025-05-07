@@ -17,14 +17,24 @@ endif()
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(-Wall -Wextra -pedantic -fPIE)
 elseif(MSVC)
-    add_compile_options(/W4 /MP /std:c++latest)
+    add_compile_options(/W0 /MP /std:c++latest)
 endif()
 
 # Source files
 set(CPP_SOURCES
+        include/kernelCodeStr.h
+        include/ClassImplementation/Macros.h
         src/main.cpp
         src/kernelCodeStr.cpp
-        include/kernelCodeStr.h
+        include/ClassImplementation/JuliaTimelapse.h
+        include/ClassImplementation/FractalInteraction.h
+        include/ClassImplementation/Fractals/MandelbrotRendering.cuh
+        include/ClassImplementation/Fractals/JuliaRendering.cuh
+        include/ClassImplementation/CpuFallback.h
+        include/ClassImplementation/CustomFormulaHandling.h
+        include/ClassImplementation/PaletteHandler.h
+        include/ClassImplementation/IterationPath.h
+
 )
 
 set(CUDA_SOURCES
@@ -34,6 +44,10 @@ set(CUDA_SOURCES
         src/fractals/julia.cu
         src/FractalClass.cu
         include/fractals/custom.cuh
+        include/ClassImplementation/FractalClass.cuh
+        include/ClassImplementation/Processing.cu
+
+
 )
 
 set(SOURCE_RESOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/fonts)

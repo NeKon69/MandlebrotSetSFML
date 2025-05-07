@@ -74,6 +74,34 @@ struct RenderGuard {
 static bool initialized_nvrtc;
 static bool created_context;
 
+using PaletteCreator = std::function<std::vector<uint8_t>(unsigned int)>;
+
+struct PaletteInfo {
+    PaletteCreator creator;
+    Palletes enum_value;
+};
+
+static const std::unordered_map<std::string, Palletes> s_palette_name_to_enum = {
+        { "HSV", Palletes::HSV },
+        { "Basic", Palletes::Basic },
+        { "BlackOWhite", Palletes::BlackOWhite },
+        { "OscillatingGrayscale", Palletes::OscillatingGrayscale },
+        { "Interpolated", Palletes::Interpolated },
+        { "Pastel", Palletes::Pastel },
+        { "CyclicHSV", Palletes::CyclicHSV },
+        { "Fire", Palletes::Fire },
+        { "FractalPattern", Palletes::FractalPattern },
+        { "PerlinNoise", Palletes::PerlinNoise },
+        { "Water", Palletes::Water },
+        { "Sunset", Palletes::Sunset },
+        { "DeepSpace", Palletes::DeepSpace },
+        { "Physchodelic", Palletes::Physchodelic },
+        { "IceCave", Palletes::IceCave },
+        { "AccretionDisk", Palletes::AccretionDisk },
+        { "ElectricNebula", Palletes::ElectricNebula },
+        { "Random", Palletes::Random }
+};
+
 template <typename Derived>
 class FractalBase : public sf::Transformable, public sf::Drawable {
 protected:
@@ -124,6 +152,7 @@ protected:
     double zoom_factor;
     double zoom_speed;
     double zoom_scale;
+    double zreal, zimag;
     float hardness_coeff = 0.f;
     Palletes curr_pallete = Palletes::HSV;
     unsigned int degrees_offsetForHSV = 0;

@@ -1,6 +1,7 @@
 //
 // Created by progamers on 5/4/25.
 //
+#pragma once
 #include <string>
 
 #ifndef MANDELBROTPROJECT_KERNELCODESTR_H

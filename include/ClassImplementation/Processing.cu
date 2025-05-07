@@ -1,0 +1,73 @@
+//
+// Created by progamers on 5/6/25.
+//
+#pragma once
+#include "ClassImplementation/FractalClass.cuh"
+#include "ClassImplementation/Macros.h"
+#include <iostream>
+
+template <typename Derived>
+void FractalBase<Derived>::post_processing() {
+    if(!isCudaAvailable){
+        image.resize({ basic_width, basic_height }, pixels);
+    }
+    else if (antialiasing) {
+        // SSAA rendering
+        dim3 dimBlock(32, 32);
+        dim3 dimGrid(
+                (width + dimBlock.x - 1) / dimBlock.x,
+                (height + dimBlock.y - 1) / dimBlock.y
+        );
+        if(!custom_formula){
+            // Launch kernel, copy to host, synchronize stream
+            ANTIALIASING_SSAA4<<<dimGrid, dimBlock, 0, stream>>>(d_pixels, ssaa_buffer, basic_width * 2, basic_height * 2, basic_width, basic_height);
+            cudaMemcpyAsync(compressed, ssaa_buffer, basic_width * basic_height * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost, stream);
+            cudaStreamSynchronize(stream);
+        }
+        else {
+            CU_SAFE_CALL(cuCtxSetCurrent(ctx));
+            void* params[] = { &cu_d_pixels, &CUssaa_buffer, &width, &height, &basic_width, &basic_height };
+            CU_SAFE_CALL(cuLaunchKernel(kernelAntialiasing,
+                                        dimGrid.x, dimGrid.y, 1,
+                                        dimBlock.x, dimBlock.y, 1,
+                                        0,
+                                        CUss,
+                                        params,
+                                        nullptr
+            ));
+            CU_SAFE_CALL(cuMemcpyDtoHAsync((void**)compressed, CUssaa_buffer, basic_height * basic_width * 4 * sizeof(unsigned char),CUss));
+            CU_SAFE_CALL(cuStreamSynchronize(CUss));
+        }
+
+        image.resize({ basic_width, basic_height }, compressed);
+
+    }
+    else {
+        if(custom_formula) {
+            CU_SAFE_CALL(cuCtxSetCurrent(ctx));
+            CU_SAFE_CALL(cuMemcpyDtoHAsync(pixels, cu_d_pixels, basic_width * basic_height * 4 * sizeof(unsigned char), CUss));
+            CU_SAFE_CALL(cuMemcpyDtoHAsync(h_total_iterations, cu_d_total_iterations, sizeof(int), CUssData));
+            CU_SAFE_CALL(cuStreamSynchronize(CUss));
+        }
+        else {
+            cudaMemcpyAsync(pixels, d_pixels, width * height * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost, stream);
+            cudaMemcpyAsync(h_total_iterations, d_total_iterations, sizeof(int), cudaMemcpyDeviceToHost, dataStream);
+            // THERE AIN'T NO WAY I AM DOING THAT SYNC LOGIC, JUST LET IT BE
+            cudaStreamSynchronize(stream);
+        }
+        hardness_coeff = *h_total_iterations / (width * height * 1.0);
+        image.resize({ basic_width, basic_height }, pixels);
+    }
+    if(!texture.loadFromImage(image, true)) {
+        std::cerr << "Data corrupted!\n";
+    }
+    sprite.setTexture(texture, true);
+    sprite.setPosition({ 0, 0 });
+}
+
+template <typename Derived>
+void FractalBase<Derived>::draw(sf::RenderTarget& target, sf::RenderStates states) const {
+    states.transform *= getTransform();
+    target.draw(sprite, states);
+    target.draw(iterationline, 0, drawen_iterations, states);
+}

@@ -50,7 +50,7 @@ float measureGFLOPS(int N) {
     cudaEventCreate(&stop);
 
     cudaEventRecord(start);
-    benchmarkKernel << <gridSize, blockSize >> > (d_out, d_a, d_b, N);
+    benchmarkKernel <<<gridSize, blockSize>>> (d_out, d_a, d_b, N);
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
 
