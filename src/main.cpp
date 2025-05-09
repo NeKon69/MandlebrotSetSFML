@@ -414,8 +414,13 @@ int main() {
         std::string code = custom_code->getText().toStdString();
         try {
             std::optional<std::string> error = mandelbrotFractal.set_custom_formula(code);
-            errorText->setText(error.value());
-            if(std::size(error.value()) > 1) throw std::runtime_error("Compilation error");
+            if(std::size(error.value()) > 1) {
+                errorText->setText("<size=20><b><color=#ff0000>Compilation Error!</color></size>\n" + error.value());
+                throw std::runtime_error("Compilation error");
+            }
+            else {
+                errorText->setText("<size=20><color=#00aa00>Compilation Successful</color></size>\n");
+            }
             parse->getRenderer()->setBorderColor(sf::Color::Green);
         }
         catch (const std::exception& e) {
@@ -424,7 +429,14 @@ int main() {
             return;
         }
         try {
-            juliaFractal.set_custom_formula(code);
+            std::optional<std::string> error = juliaFractal.set_custom_formula(code);
+            if(std::size(error.value()) > 1) {
+                errorText->setText("Compilation Error!\n" + error.value());
+                throw std::runtime_error("Compilation error");
+            }
+            else {
+                errorText->setText("<size=20><color=#00aa00><b>Compilation Successful</b></color></size>\n");
+            }
             parse->getRenderer()->setBorderColor(sf::Color::Green);
         }
         catch (const std::exception& e) {
