@@ -1,6 +1,7 @@
 #pragma once
 
-__device__ float PI = 3.14159265358979323846f;
+__device__ constexpr float PI = 3.14159265358979323846f;
+__device__ constexpr float GOLDEN_RATIO = 1.618033988749895f;
 
 #ifdef __cplusplus
 struct Color {

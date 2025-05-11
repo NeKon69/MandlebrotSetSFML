@@ -3,6 +3,9 @@
 #include <chrono>
 #include "benchmark.cuh"
 
+/// CUDA kernel for benchmarking single-precision floating-point performance.
+/// Each thread performs a fixed number of arithmetic operations (4 FLOPs per inner loop iteration)
+/// to provide a consistent workload for performance measurement.
 __global__ void benchmarkKernel(float* out, const float* a, const float* b, int N) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < N) {
@@ -14,6 +17,9 @@ __global__ void benchmarkKernel(float* out, const float* a, const float* b, int 
     }
 }
 
+/// CUDA kernel for benchmarking double-precision floating-point performance.
+/// Similar to the single-precision kernel, but uses double-precision types
+/// and performs the same fixed number of arithmetic operations per thread.
 __global__ void benchmarkKernel(double* out, const double* a, const double* b, int N) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < N) {
@@ -25,6 +31,13 @@ __global__ void benchmarkKernel(double* out, const double* a, const double* b, i
     }
 }
 
+/// Measures the single-precision floating-point performance (GFLOPS) of the GPU.
+/// This function sets up data on the host and device, launches the single-precision
+/// benchmark kernel, uses CUDA events to accurately time its execution, and calculates
+/// the GFLOPS based on the total operations and elapsed time.
+///
+/// @param N The number of elements processed by the kernel, influencing the total workload.
+/// @return float The estimated GFLOPS.
 float measureGFLOPS(int N) {
     float* d_a, * d_b, * d_out;
     cudaMalloc(&d_a, N * sizeof(float));
@@ -45,6 +58,7 @@ float measureGFLOPS(int N) {
     int blockSize = 256;
     int gridSize = (N + blockSize - 1) / blockSize;
 
+    /// Use CUDA events for precise timing of kernel execution.
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
@@ -52,11 +66,13 @@ float measureGFLOPS(int N) {
     cudaEventRecord(start);
     benchmarkKernel <<<gridSize, blockSize>>> (d_out, d_a, d_b, N);
     cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
+    cudaEventSynchronize(stop); // Wait for the kernel to finish
 
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, start, stop);
 
+    /// Calculate total floating-point operations and convert to GFLOPS.
+    /// Total FLOPs = N * iterations_per_element * FLOPs_per_iteration
     float total_flops = N * 100000.0f * 4;
     float gflops = (total_flops / (milliseconds * 1e6));
 
@@ -67,6 +83,12 @@ float measureGFLOPS(int N) {
     return gflops;
 }
 
+/// Measures the double-precision floating-point performance (GDFLOPS) of the GPU.
+/// This function is analogous to `measureGFLOPS` but uses double-precision types
+/// and the corresponding kernel to measure double-precision performance.
+///
+/// @param N The number of elements processed by the kernel.
+/// @return double The estimated GDFLOPS.
 double measureGDFLOPS(int N) {
     double *d_a, *d_b, *d_out;
     cudaMalloc(&d_a, N * sizeof(double));
@@ -84,16 +106,18 @@ double measureGDFLOPS(int N) {
     delete[] h_b;
     int blockSize = 256;
     int gridSize = (N + blockSize - 1) / blockSize;
+    /// Use CUDA events for precise timing of kernel execution.
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
-
     cudaEventRecord(start);
     benchmarkKernel<<<gridSize, blockSize>>>(d_out, d_a, d_b, N);
     cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
+    cudaEventSynchronize(stop); // Wait for the kernel to finish
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, start, stop);
+    /// Calculate total double-precision floating-point operations and convert to GDFLOPS.
+    /// Total FLOPs = N * iterations_per_element * FLOPs_per_iteration
     double total_Dflops = N * 100000.0 * 4;
     double gDflops = (total_Dflops / (milliseconds * 1e6));
     cudaFree(d_a);

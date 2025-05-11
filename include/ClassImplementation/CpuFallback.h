@@ -5,8 +5,12 @@
 #include "HardCodedVars.h"
 #include "FractalClass.cuh"
 #include <iostream>
+
+/// Sets the CUDA kernel launch grid and block dimensions.
+/// `dimBlock` is set directly, and `dimGrid` is calculated based on the
+/// image `width`, `height`, and `dimBlock` to cover all pixels.
 template <typename Derived>
-    void FractalBase<Derived>::set_grid(dim3 block) {
+void FractalBase<Derived>::set_grid(dim3 block) {
     dimBlock = block;
     dimGrid = dim3(
             (width + dimBlock.x - 1) / dimBlock.x,
@@ -14,6 +18,10 @@ template <typename Derived>
     );
 }
 
+/// CPU rendering function for the Mandelbrot set.
+/// This function is intended to be run in a separate thread.
+/// It iterates over a specified `render_target` (a portion of the image)
+/// and calculates pixel colors. Includes a mechanism to be stopped via `finish_flag`.
 void cpu_render_mandelbrot(render_target target, unsigned char* pixels, unsigned int width, unsigned int height, double zoom_x, double zoom_y,
                            double x_offset, double y_offset, Color* palette, unsigned int paletteSize,
                            unsigned int max_iterations, unsigned int* total_iterations, std::atomic<unsigned char>& finish_flag
@@ -21,18 +29,13 @@ void cpu_render_mandelbrot(render_target target, unsigned char* pixels, unsigned
 {
     try {
         unsigned int total_iterations_local = 0;
-        finish_flag.store(0);
+        finish_flag.store(0); // Mark thread as working
+        /// Clamp render target boundaries to image dimensions.
         if (target.x_end > width) {
             target.x_end = width;
         }
         if (target.y_end > height) {
             target.y_end = height;
-        }
-        if (target.x_start < 0) {
-            target.x_start = 0;
-        }
-        if (target.y_start < 0) {
-            target.y_start = 0;
         }
         for(unsigned int y = target.y_start; y < target.y_end; ++y){
             for(unsigned int x = target.x_start; x < target.x_end; ++x){
@@ -42,14 +45,15 @@ void cpu_render_mandelbrot(render_target target, unsigned char* pixels, unsigned
                 double ci = y / zoom_y - y_offset;
                 unsigned char r, g, b;
                 float curr_iter = 0;
-                while (curr_iter < max_iterations && zr * zr + zi * zi < 100.0) {
+                while (curr_iter < max_iterations && zr * zr + zi * zi < 100.0) { // Escape radius 10 (sqrt(100))
                     double tmp_zr = zr;
                     zr = zr * zr - zi * zi + cr;
                     zi = 2.0 * tmp_zr * zi + ci;
 
                     ++curr_iter;
-                    if(finish_flag.load() == 2) {
-                        finish_flag.store(1);
+                    /// Check if a stop request has been made.
+                    if(finish_flag.load(std::memory_order_relaxed) == 2) { // Use relaxed for flag check, as it's for polling
+                        finish_flag.store(1, std::memory_order_release); // Mark as finished before returning
                         return;
                     }
                 }
@@ -102,16 +106,23 @@ void cpu_render_mandelbrot(render_target target, unsigned char* pixels, unsigned
                 total_iterations_local += curr_iter;
             }
         }
+        /// Atomically add local iterations to the global counter (via mutex).
+        std::mutex mutex; // Mutex for thread safety
+        mutex.lock();
         *total_iterations += total_iterations_local;
+        mutex.unlock();
     }
     catch (const std::exception& e) {
         std::cerr << "ERROR in cpu_render_mandelbrot thread (target y=" << target.y_start << "): " << e.what() << std::endl;
     } catch (...) {
         std::cerr << "ERROR in cpu_render_mandelbrot thread (target y=" << target.y_start << "): Unknown exception!" << std::endl;
     }
-    finish_flag.store(1);
+    finish_flag.store(1, std::memory_order_release); // Mark thread as finished
 }
 
+/// CPU rendering function for the Julia set.
+/// Similar to `cpu_render_mandelbrot` but uses the Julia iteration rule
+/// with a provided seed (c_real, c_imag).
 void cpu_render_julia(render_target target, unsigned char* pixels, unsigned int width, unsigned int height, double zoom_x, double zoom_y,
                       double x_offset, double y_offset, Color* palette, unsigned int paletteSize,
                       unsigned int max_iterations, unsigned int* total_iterations, std::atomic<unsigned char>& finish_flag,
@@ -120,7 +131,7 @@ void cpu_render_julia(render_target target, unsigned char* pixels, unsigned int 
 {
     try {
         unsigned int total_iterations_local = 0;
-        finish_flag.store(0);
+        finish_flag.store(0); // Mark thread as working
         if (target.x_end > width) {
             target.x_end = width;
         }
@@ -135,18 +146,18 @@ void cpu_render_julia(render_target target, unsigned char* pixels, unsigned int 
         }
         for(unsigned int y = target.y_start; y < target.y_end; ++y){
             for(unsigned int x = target.x_start; x < target.x_end; ++x){
-                double zr = x / zoom_x - x_offset;
-                double zi = y / zoom_y - y_offset;
+                double zr = x / zoom_x - x_offset; // z0_real
+                double zi = y / zoom_y - y_offset; // z0_imag
                 unsigned char r, g, b;
                 float curr_iter = 0;
-                while (curr_iter < max_iterations && zr * zr + zi * zi < 100.0) {
+                while (curr_iter < max_iterations && zr * zr + zi * zi < 100.0) { // Escape radius 10
                     double tmp_zr = zr;
-                    zr = zr * zr - zi * zi + seed_real;
-                    zi = 2.0 * tmp_zr * zi + seed_imag;
+                    zr = zr * zr - zi * zi + seed_real; // c_real = seed_real
+                    zi = 2.0 * tmp_zr * zi + seed_imag; // c_imag = seed_imag
 
                     ++curr_iter;
-                    if(finish_flag.load() == 2) {
-                        finish_flag.store(1);
+                    if(finish_flag.load(std::memory_order_relaxed) == 2) {
+                        finish_flag.store(1, std::memory_order_release);
                         return;
                     }
                 }
@@ -199,12 +210,16 @@ void cpu_render_julia(render_target target, unsigned char* pixels, unsigned int 
                 total_iterations_local += curr_iter;
             }
         }
+        /// Atomically add local iterations to the global counter (via mutex).
+        std::mutex mutex; // Mutex for thread safety
+        mutex.lock();
         *total_iterations += total_iterations_local;
+        mutex.unlock();
     }
     catch (const std::exception& e) {
         std::cerr << "ERROR in cpu_render_julia thread (target y=" << target.y_start << "): " << e.what() << std::endl;
     } catch (...) {
         std::cerr << "ERROR in cpu_render_julia thread (target y=" << target.y_start << "): Unknown exception!" << std::endl;
     }
-    finish_flag.store(1);
+    finish_flag.store(1, std::memory_order_release); // Mark thread as finished
 }

@@ -7,6 +7,9 @@
 #include "HardCodedVars.h"
 #include <iostream>
 
+/// Finalizes the rendering process.
+/// Transfers pixel data from GPU to CPU, applies anti-aliasing if enabled,
+/// updates the SFML texture, and calculates the fractal "hardness".
 template <typename Derived>
 void FractalBase<Derived>::post_processing() {
     if(!isCudaAvailable){
@@ -16,7 +19,6 @@ void FractalBase<Derived>::post_processing() {
         // SSAA rendering
         set_grid(BLOCK_SIZE_ANTIALIASING);
         if(!custom_formula){
-            // Launch kernel, copy to host, synchronize stream
             ANTIALIASING_SSAA4<<<dimGrid, dimBlock, 0, stream>>>(d_pixels, ssaa_buffer, basic_width * 2, basic_height * 2, basic_width, basic_height);
             cudaMemcpyAsync(compressed, ssaa_buffer, basic_width * basic_height * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost, stream);
             cudaStreamSynchronize(stream);
@@ -43,18 +45,22 @@ void FractalBase<Derived>::post_processing() {
         if(custom_formula) {
             CU_SAFE_CALL(cuCtxSetCurrent(ctx));
             CU_SAFE_CALL(cuMemcpyDtoHAsync(pixels, cu_d_pixels, basic_width * basic_height * 4 * sizeof(unsigned char), CUss));
+            /// Copy the total iteration count from device to host for hardness calculation.
             CU_SAFE_CALL(cuMemcpyDtoHAsync(h_total_iterations, cu_d_total_iterations, sizeof(int), CUssData));
             CU_SAFE_CALL(cuStreamSynchronize(CUss));
         }
         else {
             cudaMemcpyAsync(pixels, d_pixels, width * height * 4 * sizeof(unsigned char), cudaMemcpyDeviceToHost, stream);
+            /// Copy the total iteration count from device to host for hardness calculation.
             cudaMemcpyAsync(h_total_iterations, d_total_iterations, sizeof(int), cudaMemcpyDeviceToHost, dataStream);
             // THERE AIN'T NO WAY I AM DOING THAT SYNC LOGIC, JUST LET IT BE
             cudaStreamSynchronize(stream);
         }
+        /// Calculate the "hardness coefficient" as the average number of iterations per pixel.
         hardness_coeff = *h_total_iterations / (width * height * 1.0);
         image.resize({ basic_width, basic_height }, pixels);
     }
+    /// Load the pixel data into the SFML texture. The 'true' argument sets sRgb for pixels color.
     if(!texture.loadFromImage(image, true)) {
         std::cerr << "Data corrupted!\n";
     }
@@ -62,9 +68,11 @@ void FractalBase<Derived>::post_processing() {
     sprite.setPosition({ 0, 0 });
 }
 
+/// Draws the fractal sprite and the iteration path onto the render target.
 template <typename Derived>
 void FractalBase<Derived>::draw(sf::RenderTarget& target, sf::RenderStates states) const {
     states.transform *= getTransform();
     target.draw(sprite, states);
+    /// Draw the iteration path line strip. `drawen_iterations` controls how many points of the path are drawn.
     target.draw(iterationline, 0, drawen_iterations, states);
 }

@@ -9,15 +9,16 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <sstream>
 
 
-
+/// Sets a custom formula for fractal iteration using NVRTC (runtime compilation).
+/// This function compiles the provided GLSL-like formula string into CUDA PTX code
+/// and loads it as a module for execution. It runs the compilation in a separate thread.
 template <typename Derived>
-/// Formula should be like this one\n
-/// new_real = z_real * z_real - z_imag * z_imag + real;\n
-/// z_imag =  2 * z_real * z_imag + imag;
 std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const std::string& formula) {
 
+    /// Prevent starting a new compilation if one is already in progress.
     if(is_compiling) {
         std::promise<std::string> promise;
         promise.set_value("Compilation in progress, please wait.");
@@ -37,25 +38,26 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
         fractal_name_str = "mandelbrot";
     }
 
+    /// Launch compilation in a detached thread to avoid blocking the main application.
     compile_thread = std::thread([this, promise = std::move(p), formula, fractal_name_str]() mutable {
         nvrtcProgram prog = nullptr;
 
-        this->log_buffer = "";
+        this->log_buffer = ""; // Clear previous compilation log
         std::string lowered_kernel_name_float_str;
         std::string lowered_kernel_name_double_str;
         std::string lowered_kernel_name_ssaa_str;
 
         try {
-
-
-            if (!this->custom_formula) {
+            /// Ensure the context is NVRTC (Driver API) for custom formulas.
+            /// This also handles initial NVRTC/Driver API setup if needed.
+            if (!this->custom_formula) { // Only switch if not already using custom formula context
                 set_context(context_type::NVRTC);
             }
             CU_SAFE_CALL(cuCtxSetCurrent(this->ctx));
 
             this->progress_compiling_percentage = 20;
 
-            // Read header file
+            /// Read the content of the custom kernel header file.
             const std::ifstream header_file("../include/fractals/custom.cuh");
             if (!header_file.is_open()) {
                 log_buffer = "Error: Could not open header file: ../include/fractals/custom.cuh\n";
@@ -65,26 +67,24 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
             buffer << header_file.rdbuf();
             const std::string header_content = buffer.str();
             const char *header_data = header_content.c_str();
-            constexpr char *header_name = "custom.cuh";
+            constexpr char *header_name = "custom.cuh"; // Name used by NVRTC for the included header
 
-            // Form full kernel code locally
+            /// Construct the full kernel code by prepending and appending template code
+            /// around the user-provided `formula`.
             std::string full_kernel_code_local;
             if (fractal_name_str == "julia") {
-                // Assuming these are members accessible via this->
                 full_kernel_code_local = beginning_julia + formula + ending + julia_predefined + antialiasingCode;
-            } else {
+            } else { // mandelbrot
                 full_kernel_code_local =
                         beginning_mandelbrot + formula + ending + mandelbrot_predefined + antialiasingCode;
             }
 
-            // Create program
-            // Use local prog and full_kernel_code_local, captured fractal_name_str
+            /// Create an NVRTC program object.
             NVRTC_SAFE_CALL(nvrtcCreateProgram(&prog, full_kernel_code_local.c_str(),
                                                ("custom_" + fractal_name_str + ".cu").c_str(), 1, &header_data,
                                                &header_name));
 
-            // Add name expressions
-            // Use local prog, captured fractal_name_str
+            /// Register kernel names with NVRTC to get their mangled (lowered) names later.
             NVRTC_SAFE_CALL(
                     nvrtcAddNameExpression(prog, ("fractal_rendering_" + fractal_name_str + "<float>").c_str()));
             NVRTC_SAFE_CALL(
@@ -93,7 +93,7 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
 
             this->progress_compiling_percentage = 30;
 
-            // Prepare compile options
+            /// Set NVRTC compilation options (GPU architecture, fast math).
             std::vector<const char *> compile_options;
             compile_options.push_back(compute_capability.c_str());
             compile_options.push_back("--use_fast_math");
@@ -102,19 +102,16 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
 
             this->progress_compiling_percentage = 35;
 
-            // Compile the program
             nvrtcResult compileResult = nvrtcCompileProgram(prog, num_opts, opts);
 
-            // Get compilation log
             size_t logSize = 0;
             if (prog) { NVRTC_SAFE_CALL(nvrtcGetProgramLogSize(prog, &logSize)); }
-            if (logSize > 1 && prog) {
+            if (logSize > 1 && prog) { // logSize > 1 means there's actual content
                 log_buffer.resize(logSize);
                 NVRTC_SAFE_CALL(nvrtcGetProgramLog(prog, &log_buffer[0]));
             }
 
             if (compileResult != NVRTC_SUCCESS) {
-                // Error handling, print log to cerr
                 std::cerr << "---------------------\n";
                 std::cerr << "NVRTC Compilation Failed for " << fractal_name_str << ":\n";
                 std::cerr << "Result Code: " << nvrtcGetErrorString(compileResult) << "\n";
@@ -122,10 +119,9 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
                 std::cerr << "Compilation Log:\n";
                 std::cerr << log_buffer << std::endl;
                 std::cerr << "---------------------\n\n";
-                log_buffer = "Compilation FAILED:\n" + log_buffer; // Prepend error message to log
-                throw std::runtime_error("NVRTC Compilation Failed"); // Go to catch block
+                log_buffer = "Compilation FAILED:\n" + log_buffer;
+                throw std::runtime_error("NVRTC Compilation Failed");
             } else {
-                // Success, print log if warnings to cout
                 std::cout << "NVRTC Compilation Succeeded for " << fractal_name_str << ".\n";
                 if (!log_buffer.empty() && log_buffer.length() > 1) {
                     std::cout << "---------------------\n";
@@ -136,6 +132,7 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
                 this->progress_compiling_percentage = 75;
             }
 
+            /// Retrieve the mangled (lowered) names of the compiled kernels.
             const char *lowered_name_float_ptr = nullptr;
             if (prog) {
                 NVRTC_SAFE_CALL(nvrtcGetLoweredName(prog, ("fractal_rendering_" + fractal_name_str + "<float>").c_str(),
@@ -164,6 +161,7 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
 
             this->progress_compiling_percentage = 85;
 
+            /// Get the compiled PTX code.
             size_t ptxSize = 0;
             if (prog) { NVRTC_SAFE_CALL(nvrtcGetPTXSize(prog, &ptxSize)); }
             std::vector<char> ptx;
@@ -172,18 +170,14 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
                 NVRTC_SAFE_CALL(nvrtcGetPTX(prog, ptx.data()));
             } else if (ptxSize == 0 && compileResult == NVRTC_SUCCESS) {
                 std::cerr << "Warning: NVRTC compilation produced 0-byte PTX for " << fractal_name_str << ".\n";
-                // Could add some warnings and stuff
-            } else if (ptxSize == 0 && compileResult != NVRTC_SUCCESS) {
-                // Could add some warnings and stuff
             }
 
-
-            // Destroy NVRTC program
             if (prog) {
                 NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog));
                 prog = nullptr;
             }
 
+            /// Unload any previously loaded NVRTC module and reset function pointers.
             if (this->module_loaded && this->module) { CU_SAFE_CALL(cuModuleUnload(this->module)); }
             this->module = nullptr;
             this->module_loaded = false;
@@ -196,6 +190,7 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
             if (ptx.empty()) {
                 throw std::runtime_error("PTX vector is empty. Cannot load module.");
             }
+            /// Load the PTX code into a CUDA module using the Driver API.
             CU_SAFE_CALL(cuModuleLoadDataEx(&this->module, ptx.data(), 0, nullptr, nullptr));
             this->module_loaded = true;
             if (!this->module) {
@@ -204,6 +199,7 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
 
             this->progress_compiling_percentage = 95;
 
+            /// Get function handles for the compiled kernels from the loaded module.
             if (lowered_kernel_name_float_str.empty())
                 throw std::runtime_error("Internal Error: Float lowered name string is empty for GetFunction.");
             CU_SAFE_CALL(cuModuleGetFunction(&this->kernelFloat, this->module, lowered_kernel_name_float_str.c_str()));
@@ -219,10 +215,10 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
                                              lowered_kernel_name_ssaa_str.c_str()));
 
 
-            this->custom_formula = true;
+            this->custom_formula = true; // Mark that a custom formula is now active
             this->progress_compiling_percentage = 100;
 
-            promise.set_value(log_buffer);
+            promise.set_value(log_buffer); // Set the future with the compilation log (success or warnings)
 
         } catch (const std::exception &e) {
             std::cerr << "Caught Exception during NVRTC/CUDA setup for " << fractal_name_str << ": " << e.what()
@@ -231,11 +227,12 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
             log_buffer += "Exception: ";
             log_buffer += e.what();
 
-            if (prog) {
-                NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog));
+            if (prog) { // Ensure NVRTC program is destroyed even on error
+                NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog)); // This might throw if prog is already bad, but NVRTC_SAFE_CALL handles it
                 prog = nullptr;
             }
 
+            /// Clean up module and kernel pointers on error.
             if (this->module_loaded && this->module) {
                 CUresult unload_res = cuModuleUnload(this->module);
                 if (unload_res != CUDA_SUCCESS) {
@@ -250,13 +247,13 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
             lowered_kernel_name_float_str.clear();
             lowered_kernel_name_double_str.clear();
             lowered_kernel_name_ssaa_str.clear();
-            this->custom_formula = false;
+            this->custom_formula = false; // Revert custom formula flag
 
-            this->progress_compiling_percentage = -1;
+            this->progress_compiling_percentage = -1; // Indicate error in progress
 
-            promise.set_value(log_buffer);
+            promise.set_value(log_buffer); // Set the future with the error log
 
-        } catch (...) {
+        } catch (...) { // Catch-all for any other exceptions
             std::cerr << "Caught Unknown Exception during NVRTC/CUDA setup for " << fractal_name_str << std::endl;
             log_buffer = "Caught Unknown Exception during compilation.";
 
@@ -284,50 +281,53 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
 
             promise.set_value(log_buffer);
         }
-        this->is_compiling = false;
+        this->is_compiling = false; // Mark compilation as finished
     });
-    compile_thread.detach();
-    return current_compile_future.share();
+    compile_thread.detach(); // Detach the compilation thread
+    return current_compile_future.share(); // Return a shared future for the result
 }
 
+/// Sets the CUDA context for fractal rendering (CUDA Runtime API vs. NVRTC/Driver API).
+/// This involves freeing existing GPU resources associated with the old context
+/// and allocating/initializing resources for the new context.
 template <typename Derived>
-/// \brief Set the context for the fractal rendering.
-/// This function allows switching between CUDA and NVRTC contexts.
-/// It frees existing resources and allocates new ones based on the selected context.
 void FractalBase<Derived>::set_context(context_type contx) {
-    if(contx == context) return;
+    if(contx == context) return; // No change if the context is already the same
     std::cout << "Switching context of fractal(" << (std::is_same<Derived, fractals::julia>::value? "Julia" : "Mandelbrot") << ")from " << (context == context_type::CUDA ? "CUDA" : "NVRTC") << " to " << (contx == context_type::CUDA ? "CUDA" : "NVRTC") << std::endl;
 
-    // Free existing resources
     FREE_ALL_IMAGE_MEMORY();
     FREE_ALL_NON_IMAGE_MEMORY();
 
-    if(context == context_type::CUDA) {
-        if(!initialized_nvrtc){
+    if(contx == context_type::NVRTC) { // Switching TO NVRTC/Driver API
+        if(!initialized_nvrtc){ // Global NVRTC/Driver API initialization
             CU_SAFE_CALL(cuInit(0));
+            initialized_nvrtc = true;
         }
-        initialized_nvrtc = true;
         CU_SAFE_CALL(cuDeviceGet(&device, 0));
-        CU_SAFE_CALL(cuCtxCreate(&ctx, 0, device));
-        CU_SAFE_CALL(cuCtxSetCurrent(ctx));
-        created_context = true;
+        CU_SAFE_CALL(cuCtxCreate(&ctx, 0, device)); // Create a Driver API context
+        CU_SAFE_CALL(cuCtxSetCurrent(ctx));        // Set it as current
+        created_context = true;                  // Mark that this instance created the context
     }
-    else {
-        if (ctx) {
-            created_context = false;
+    else { // Switching TO CUDA Runtime API
+        if (ctx && created_context) { // If this instance created a Driver API context, destroy it
             CU_SAFE_CALL(cuCtxDestroy(ctx));
             ctx = nullptr;
+            created_context = false;
         }
         if (device) {
-            device = 0;
+            device = 0; // Reset device handle
         }
+        /// For CUDA Runtime API, `cudaSetDevice` is typically sufficient for context management.
+        /// The Runtime API implicitly handles context creation/management per thread.
         CUDA_SAFE_CALL(cudaSetDevice(0));
     }
-    context = contx;
+    context = contx; // Update the active context type
 
+    /// Re-allocate resources for the new context.
     ALLOCATE_ALL_IMAGE_MEMORY();
     ALLOCATE_ALL_NON_IMAGE_MEMORY();
 
+    /// Custom formula flag is tied to the NVRTC context.
     if(context == context_type::NVRTC) custom_formula = true;
     else custom_formula = false;
 }

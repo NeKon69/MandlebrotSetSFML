@@ -7,14 +7,22 @@
 #include <string>
 #include <ctime>
 
+/// Alias for the render state enum, controlling the quality
+/// of the fractal rendering (e.g., 'good' for interactive,
+/// 'best' for final detail).
 using RenderQuality = render_state;
 
+/// Macros to calculate scaled sizes based on the current window
+/// resolution relative to a reference resolution (2560x1440).
+/// Used to make UI elements scale with the window.
 #define calculate_size_y(based) \
   (based / (1440.f / window.getSize().y))
 
 #define calculate_size_x(based) \
   (based / (2560.f / window.getSize().x))
 
+/// Helper function to populate a TGUI ComboBox with a list of items
+/// and set a default selected item.
 void ComboBoxCreator(tgui::ComboBox::Ptr& comboBox, const std::vector<std::string>& items, const std::string& defaultItem) {
     for (const auto& item : items) {
         comboBox->addItem(item);
@@ -22,6 +30,8 @@ void ComboBoxCreator(tgui::ComboBox::Ptr& comboBox, const std::vector<std::strin
     comboBox->setSelectedItem(defaultItem);
 }
 
+/// Calculates the global screen bounds (position and size) for a TGUI panel.
+/// This is used to determine if the mouse is within a UI element's area.
 sf::FloatRect calculateManualGlobalBounds(const tgui::Panel::Ptr& object) {
     if (!object) {
         return sf::FloatRect{};
@@ -31,6 +41,9 @@ sf::FloatRect calculateManualGlobalBounds(const tgui::Panel::Ptr& object) {
     return sf::FloatRect{globalTopLeft, size};
 }
 
+/// Checks if the mouse cursor is currently positioned inside any
+/// of the provided TGUI panel objects. Used to prevent fractal
+/// interaction when the mouse is over UI controls.
 bool isMouseInsideAnyLabelManual(sf::Vector2i mousePos, const std::initializer_list<tgui::Panel::Ptr>& objects) {
     auto mousePosF = static_cast<sf::Vector2f>(mousePos);
 
@@ -41,17 +54,17 @@ bool isMouseInsideAnyLabelManual(sf::Vector2i mousePos, const std::initializer_l
     });
 }
 
-/*
- * This function contains the main application logic, running in a separate thread.
- * It initializes the window, UI, fractal renderers, and handles the event loop,
- * rendering updates, and state management.
- */
+/// The main application logic.
+/// Initializes the window, UI, fractal renderers, and handles the event loop,
+/// rendering updates, and state management.
 int main() {
-    /*
-     * Core state variables tracking rendering quality, idle times for automatic
-     * quality improvement, and flags indicating whether a re-render is necessary.
-     * Render quality switches between 'good' (fast, interactive) and 'best' (slow, detailed).
-     */
+    /// Core application state variables.
+    /// mandelbrotIdleTimeMs, juliaIdleTime: Track time since last interaction
+    /// to trigger quality improvements.
+    /// current/previousQuality: Manage rendering quality levels (good/best).
+    /// needsRender: Flags to force a re-render.
+    /// showMandelbrotIterationLines: Toggle for debugging visualization.
+    /// updateIterationsDynamically: Flags for automatic iteration adjustment based on zoom.
     float mandelbrotIdleTimeMs = 0.0f;
     sf::Time juliaIdleTime = sf::Time::Zero;
     sf::Clock frameClock;
@@ -67,16 +80,17 @@ int main() {
     bool updateIterationsDynamicallyMandelbrot = false;
     bool updateIterationsDynamicallyJulia = false;
 
-    /*
-     * Window and rendering target setup using SFML. An off-screen render texture
-     * is used to draw the fractals before displaying them on the main window.
-     */
+    /// SFML window and off-screen render texture setup.
+    /// The render texture is used to draw fractal content before
+    /// presenting it to the main window.
     sf::VideoMode windowSize = sf::VideoMode::getDesktopMode();
     sf::RenderWindow window(windowSize, "Fractals", sf::Style::None, sf::State::Windowed);
     sf::RenderTexture renderTarget;
     renderTarget = sf::RenderTexture(windowSize.size);
     sf::Vector2u oldWindowSize = window.getSize();
 
+    /// Instantiation of the custom fractal objects.
+    /// These classes handle the fractal computation and rendering,
     using MandelbrotFractal = FractalBase<fractals::mandelbrot>;
     using JuliaFractal = FractalBase<fractals::julia>;
 
@@ -84,10 +98,8 @@ int main() {
     JuliaFractal juliaFractal;
     juliaFractal.setPosition({ static_cast<float>(window.getSize().x - 800), 0.f });
 
-    /*
-     * Font loading and UI text elements for displaying FPS and fractal hardness.
-     * Hardness is likely a metric related to the computational cost of the current view.
-     */
+    /// Font loading and SFML Text objects for displaying information
+    /// like FPS and fractal "hardness" (a measure of computational cost).
     sf::Font mainFont;
     if (!mainFont.openFromFile("fonts/LiberationMono-Bold.ttf")) {
         std::cerr << "Error loading font!" << std::endl;
@@ -104,10 +116,18 @@ int main() {
     juliaHardnessDisplay.setPosition({ static_cast<float>(window.getSize().x - juliaFractal.get_resolution().x + 10), 40.f });
     juliaHardnessDisplay.setString("J-Hardness: 0.0");
 
-    /*
-     * State variables related to mouse input, interaction modes (dragging, zooming),
-     * Julia set parameters, and application modes like timelapse.
-     */
+    /// State variables related to user interaction and application modes.
+    /// mousePosition: Current mouse coordinates.
+    /// juliaSeedReal/Imag: Parameters for the Julia set, often linked to
+    /// the mouse position over the Mandelbrot set.
+    /// isJuliaVisible: Toggle for showing/hiding the Julia set.
+    /// isLeftMouseDown: Flags for tracking dragging state.
+    /// isTimelapseActive: Flag for the Julia set animation mode.
+    /// blockJuliaParameterUpdate: Prevents mouse position from updating Julia parameters.
+    /// progressiveAnimation: Flag for the Julia iteration animation.
+    /// isZooming: Flags for tracking zoom state.
+    /// mouseMovedInArea: Flags to detect mouse movement within fractal areas.
+    /// IsInArea: Flags to check if the mouse is currently within a fractal's display area.
     sf::Vector2i mousePosition;
     double juliaSeedReal = 0.0;
     double juliaSeedImag = 0.0;
@@ -123,16 +143,15 @@ int main() {
     bool mouseMovedInMandelbrotArea = true;
     bool isZoomingJulia = false;
     bool mouseMovedInJuliaArea = false;
-    
+
     bool IsInMandelbrotArea = false;
     bool IsInJuliaArea = false;
 
 
-
-    /*
-     * Clocks for timing different operations: FPS updates, render times (though not explicitly displayed),
-     * and detecting user inactivity for quality improvements.
-     */
+    /// SFML Clocks for timing various application aspects.
+    /// renderClock: Measures fractal rendering time (not currently displayed).
+    /// fpsUpdateClock: Controls the frequency of FPS display updates.
+    /// qualityImprovementClock: Tracks idle time for triggering 'best' quality renders.
     sf::Clock mandelbrotRenderClock;
     sf::Clock juliaRenderClock;
     sf::Clock fpsUpdateClock;
@@ -140,16 +159,9 @@ int main() {
 
     unsigned int frameCountForFPS = 0;
 
-    /*
-     * Fractal object instantiation using the custom CUDA-accelerated FractalBase class.
-     * One object for the Mandelbrot set and one for the Julia set.
-     */
-
-
-    /*
-     * GPU performance estimation to potentially calibrate fractal computation complexity.measureGDFLOPS
-     * The measured GFLOPS value is passed to the fractal objects.
-     */
+    /// GPU performance estimation.
+    /// Measures GFLOPS/GDFLOPS to potentially calibrate fractal
+    /// computation complexity or dynamic iteration limits.
     std::cout << "Measuring GFLOPS..." << std::endl;
     float measuredGflops = measureGFLOPS(50000);
     std::cout << "Estimated GFLOPS: " << measuredGflops << std::endl;
@@ -157,11 +169,8 @@ int main() {
     mandelbrotFractal.setMaxComputation(measuredGflops, measuredGDflops);
     juliaFractal.setMaxComputation(measuredGflops, measuredGDflops);
 
-    /*
-     * TGUI setup: associating the GUI manager with the window and creating widgets
-     * (palette selector combobox, HSV offset slider) with their respective callbacks
-     * to update fractal parameters and trigger re-renders.
-     */
+    /// TGUI (Tiny GUI) setup.
+    /// Initializes the GUI manager and prepares it to handle UI elements.
     tgui::Gui gui(window);
 
     const std::vector<std::string> paletteNames = {
@@ -170,7 +179,6 @@ int main() {
             "Sunset", "DeepSpace", "Physchodelic", "IceCave", "ElectricNebula",
             "AccretionDisk", "Random"};
 
-    // --- Common layout values ---
     const float controlPadding = calculate_size_y(10.f);
     const float labelControlVPadding = calculate_size_y(4.f);
     const float controlGroupXOffsetMandelbrot = calculate_size_x(10.f);
@@ -184,8 +192,10 @@ int main() {
     constexpr unsigned int UPDATE_FRAMES_OF_ANIMATION = 60;
     sf::Clock timer_update_iteration;
 
-    // --- Mandelbrot Controls ---
-
+    /// Mandelbrot control panel and widgets.
+    /// Sets up UI elements for configuring the Mandelbrot fractal,
+    /// including palette selection, HSV offset, resolution, max iterations,
+    /// reset button, progressive iteration checkbox, and compilation controls.
     sf::Vector2i initialMandelbrotRes = mandelbrotFractal.get_resolution();
     float mandelbrotControlsStartY = static_cast<float>(initialMandelbrotRes.y) + controlPadding;
 
@@ -231,7 +241,7 @@ int main() {
     tgui::EditBox::Ptr resolutionPickerMandelbrot = tgui::EditBox::create();
     resolutionPickerMandelbrot->setText(std::to_string(initialMandelbrotRes.x) + "x" + std::to_string(initialMandelbrotRes.y));
     resolutionPickerMandelbrot->setPosition(controlGroupXOffsetMandelbrot, tgui::bindBottom(paletteOffsetSliderMandelbrot) + controlPadding);
-    resolutionPickerMandelbrot->setSize({controlWidth, calculate_size_y(24)}); // Use full control width
+    resolutionPickerMandelbrot->setSize({controlWidth, calculate_size_y(24)});
     resolutionPickerMandelbrot->onTextChange([&](const tgui::String& str) {
         std::string text = str.toStdString();
         size_t x_pos = text.find('x');
@@ -259,9 +269,11 @@ int main() {
     });
     gui.add(resolutionPickerMandelbrot);
 
-    // --- Max Iterations Control (Mandelbrot) ---
+    /// Max Iterations Control for Mandelbrot.
+    /// Includes a label, edit box, and slider for setting the maximum number
+    /// of iterations for the Mandelbrot calculation.
     tgui::Label::Ptr maxIterLabelMandelbrot = tgui::Label::create("Max Iterations:");
-    maxIterLabelMandelbrot->setPosition(controlGroupXOffsetMandelbrot, tgui::bindBottom(resolutionPickerMandelbrot) + controlPadding * 1.5f); // Add a bit more space
+    maxIterLabelMandelbrot->setPosition(controlGroupXOffsetMandelbrot, tgui::bindBottom(resolutionPickerMandelbrot) + controlPadding * 1.5f);
     gui.add(maxIterLabelMandelbrot);
     unsigned int currentMandelbrotIters = std::max(minIterations, std::min(maxIterations, mandelbrotFractal.get_max_iters()));
     mandelbrotFractal.set_max_iters(currentMandelbrotIters);
@@ -293,6 +305,8 @@ int main() {
         needsMandelbrotRender = true;
     });
 
+    /// Callback function to update Mandelbrot iterations from the edit box.
+    /// Includes input validation and error handling.
     auto updateMandelbrotIterationsFromEditBox = [&, maxIterSliderMandelbrot, maxIterEditBoxMandelbrot]() {
         unsigned int currentValue = mandelbrotFractal.get_max_iters();
         try {
@@ -309,7 +323,7 @@ int main() {
                 } else {
                     currentValue = mandelbrotFractal.get_max_iters();
                     maxIterEditBoxMandelbrot->setText(std::to_string(currentValue));
-                    if(maxIterSliderMandelbrot) { maxIterSliderMandelbrot->setValue(static_cast<float>(currentValue)); } // Also reset slider
+                    if(maxIterSliderMandelbrot) { maxIterSliderMandelbrot->setValue(static_cast<float>(currentValue)); }
                     maxIterEditBoxMandelbrot->getRenderer()->setBorderColor("orange");
                 }
             } else if (maxIterEditBoxMandelbrot) {
@@ -345,6 +359,7 @@ int main() {
     });
     gui.add(ResetMandelbrot);
 
+    /// Checkbox to toggle dynamic iteration updates for Mandelbrot based on zoom level.
     tgui::CheckBox::Ptr UpdateMaxIterationsMandelbrot = tgui::CheckBox::create("Progressive Iterations");
     UpdateMaxIterationsMandelbrot->setPosition(controlGroupXOffsetMandelbrot, tgui::bindBottom(ResetMandelbrot) + controlPadding);
     UpdateMaxIterationsMandelbrot->setSize({calculate_size_x(controlWidth / 16), calculate_size_y(24 / 2)});
@@ -366,6 +381,7 @@ int main() {
     });
     gui.add(UpdateMaxIterationsMandelbrot);
 
+    /// ComboBox to switch between different computation contexts (NVRTC, CUDA).
     tgui::ComboBox::Ptr context_switcher_mandelbrot = tgui::ComboBox::create();
     context_switcher_mandelbrot->setPosition({controlGroupXOffsetMandelbrot, tgui::bindBottom(UpdateMaxIterationsMandelbrot) + controlPadding});
     context_switcher_mandelbrot->setSize({controlWidth, calculate_size_y(24)});
@@ -377,6 +393,8 @@ int main() {
     });
     gui.add(context_switcher_mandelbrot);
 
+    /// Panel and TextArea for entering custom fractal formulas (NVRTC).
+    /// Includes a compile button, progress bar, and error display.
     tgui::Panel::Ptr mandelbrotPanelText = tgui::Panel::create();
     mandelbrotPanelText->setPosition(controlGroupXOffsetMandelbrot - controlPadding / 2, tgui::bindBottom(context_switcher_mandelbrot) + controlPadding * 3);
     mandelbrotPanelText->setSize({controlWidth * 2 + controlPadding, calculate_size_y(250)});
@@ -424,6 +442,8 @@ int main() {
     compilationErrorPopUp->setVisible(false);
     gui.add(compilationErrorPopUp);
 
+    /// Button to trigger compilation of the custom fractal formula.
+    /// Updates progress bar and displays compilation errors or success messages.
     auto parse  = tgui::Button::create("Compile!");
     parse->setPosition({controlGroupXOffsetMandelbrot, tgui::bindBottom(custom_code) + controlPadding});
     parse->setSize({controlWidth, calculate_size_y(24)});
@@ -506,6 +526,7 @@ int main() {
     });
     gui.add(parse);
 
+    /// Button to toggle compilation error text area.
     sf::Image icon({10, 10});
     icon.loadFromFile("Images/Info.png");
     tgui::BitmapButton::Ptr errorButton = tgui::BitmapButton::create();
@@ -526,7 +547,10 @@ int main() {
     gui.add(errorButton);
 
 
-    // --- Julia Controls ---
+    /// Julia control panel and widgets.
+    /// Sets up UI elements for configuring the Julia fractal,
+    /// including palette selection, HSV offset, resolution, max iterations,
+    /// reset button, progressive iteration checkbox, and animation toggle.
     sf::Vector2i initialJuliaRes = juliaFractal.get_resolution();
     float juliaControlsStartY = static_cast<float>(initialJuliaRes.y) + controlPadding;
 
@@ -608,7 +632,9 @@ int main() {
     });
     gui.add(resolutionPickerJulia);
 
-    // --- Max Iterations Control (Julia) ---
+    /// Max Iterations Control for Julia.
+    /// Includes a label, edit box, and slider for setting the maximum number
+    /// of iterations for the Julia calculation.
     tgui::Label::Ptr maxIterLabelJulia = tgui::Label::create("Max Iterations:");
     maxIterLabelJulia->setPosition(controlGroupXOffsetJulia, tgui::bindBottom(resolutionPickerJulia) + controlPadding * 1.5f);
     gui.add(maxIterLabelJulia);
@@ -631,9 +657,9 @@ int main() {
     maxIterSliderJulia->setSize({iterSliderWidth, calculate_size_y(18)});
     gui.add(maxIterSliderJulia);
 
-    maxIterSliderJulia->onValueChange([&, maxIterEditBoxJulia](float value) { // Capture edit box pointer
+    maxIterSliderJulia->onValueChange([&, maxIterEditBoxJulia](float value) {
         unsigned int intValue = static_cast<unsigned int>(value);
-        intValue = std::max(minIterations, std::min(maxIterations, intValue)); // Clamp
+        intValue = std::max(minIterations, std::min(maxIterations, intValue));
         juliaFractal.set_max_iters(intValue);
         if (maxIterEditBoxJulia) {
             maxIterEditBoxJulia->setText(std::to_string(intValue));
@@ -642,6 +668,8 @@ int main() {
         needsJuliaRender = true;
     });
 
+    /// Callback function to update Julia iterations from the edit box.
+    /// Includes input validation and error handling.
     auto updateJuliaIterationsFromEditBox = [&, maxIterSliderJulia, maxIterEditBoxJulia]() {
         unsigned int currentValue = juliaFractal.get_max_iters();
         try {
@@ -694,6 +722,7 @@ int main() {
     });
     gui.add(ResetJulia);
 
+    /// Toggle button to start/stop a progressive animation of Julia iterations.
     tgui::ToggleButton::Ptr UpdateIterationsJulia = tgui::ToggleButton::create("Start Cool Animation");
     unsigned int startingIterations = 300;
     UpdateIterationsJulia->setPosition(controlGroupXOffsetJulia, tgui::bindBottom(ResetJulia) + controlPadding);
@@ -706,6 +735,8 @@ int main() {
         progressiveAnimation = !progressiveAnimation;
     });
     gui.add(UpdateIterationsJulia);
+
+    /// Checkbox to toggle dynamic iteration updates for Julia based on zoom level.
     tgui::CheckBox::Ptr UpdateMaxIterationsJulia = tgui::CheckBox::create("Progressive Iterations");
     UpdateMaxIterationsJulia->setPosition(controlGroupXOffsetJulia, tgui::bindBottom(UpdateIterationsJulia) + controlPadding);
     UpdateMaxIterationsJulia->setSize({controlWidth / 16, calculate_size_y(24 / 2)});
@@ -726,34 +757,24 @@ int main() {
         updateIterationsDynamicallyJulia = false;
     });
     gui.add(UpdateMaxIterationsJulia);
-    /*
-     * The main application loop continues as long as the window is open.
-     * It handles events, updates state, determines rendering needs, performs rendering,
-     * and draws the final frame.
-     */
 
+    /// Main application loop.
+    /// Processes events, updates state, renders fractals, and draws the frame.
     window.setFramerateLimit(360);
     while (window.isOpen()) {
-        /*
-         * Event processing loop: handles all user input and window events.
-         * Events are passed to TGUI first. Specific SFML events are handled
-         * to manage zooming, panning, dragging, parameter changes, and other interactions.
-         * Any significant user interaction resets the 'qualityImprovementClock'.
-         */
+        /// Event processing.
+        /// Handles user input (mouse, keyboard) and window events.
+        /// Events are first processed by TGUI, then custom logic handles
+        /// fractal interaction (dragging, zooming, parameter changes).
+        /// User interaction resets the quality improvement timer.
         while (const auto event = window.pollEvent()) {
-             gui.handleEvent(*event);
-
-            if (event->is<sf::Event::MouseWheelScrolled>() ||
-                event->is<sf::Event::MouseMoved>() ||
-                event->is<sf::Event::KeyPressed>() ||
-                event->is<sf::Event::MouseButtonPressed>())
-            {
-                qualityImprovementClock.restart();
-            }
+            gui.handleEvent(*event);
 
             if (const auto* mouseMoveEvent = event->getIf<sf::Event::MouseMoved>()) {
                 mousePosition = mouseMoveEvent->position;
 
+                /// Check if mouse is over UI panels to prevent fractal interaction
+                /// when controls are being used.
                 bool mouseOverAnyLabel = isMouseInsideAnyLabelManual(mousePosition, {juliaPanel, controlPanelMandelbrot, mandelbrotPanelText});
 
                 IsInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < mandelbrotFractal.get_resolution().x &&
@@ -789,6 +810,10 @@ int main() {
                 break;
             }
 
+            /// Keyboard event handling.
+            /// Handles specific key presses for actions like closing the window,
+            /// blocking Julia updates, moving the Mandelbrot view, toggling
+            /// timelapse, taking screenshots, and forcing re-renders.
             if (const auto* keyPressEvent = event->getIf<sf::Event::KeyPressed>()) {
                 IsInMandelbrotArea = mousePosition.x >= 0 && mousePosition.x < mandelbrotFractal.get_resolution().x && mousePosition.y >= 0 && mousePosition.y < mandelbrotFractal.get_resolution().y;
 
@@ -875,23 +900,29 @@ int main() {
 
             }
 
+            /// Mouse wheel event handling for zooming.
+            /// Zooms the fractal under the mouse cursor. Triggers 'good' quality render.
+            /// Dynamically adjusts iterations if the corresponding checkbox is checked.
             if (const auto* mouseWheelEvent = event->getIf<sf::Event::MouseWheelScrolled>()) {
                 float delta = mouseWheelEvent->delta;
                 if (IsInMandelbrotArea) {
                     isZoomingMandelbrot = true;
                     currentMandelbrotQuality = RenderQuality::good;
                     mandelbrotFractal.handleZoom(delta, mousePosition);
-                    updateIterationsDynamicallyMandelbrot? mandelbrotFractal.set_max_iters( (unsigned int)std::min( std::max( 300.0 / std::sqrt(240.0) * std::sqrt(std::max(1.0, mandelbrotFractal.get_zoom_x())), 50.0), 10000.0 )) : mandelbrotFractal.set_max_iters(maxIterSliderMandelbrot->getValue());
+                    updateIterationsDynamicallyMandelbrot? mandelbrotFractal.set_max_iters( (unsigned int)std::min( std::max( 300.0 / std::sqrt(240.0) * std::sqrt(std::max(1.0, mandelbrotFractal.get_zoom_x())), 50.0), 10000.0 )) : mandelbrotFractal.set_max_iters(mandelbrotFractal.get_max_iters());
                 }
                 else if (IsInJuliaArea) {
                     isZoomingJulia = true;
                     currentJuliaQuality = RenderQuality::good;
                     juliaFractal.handleZoom(delta, {int(mousePosition.x - window.getSize().x + juliaFractal.get_resolution().x), mousePosition.y});
-                    updateIterationsDynamicallyJulia? juliaFractal.set_max_iters( (unsigned int)std::min( std::max( 300.0 / std::sqrt(240.0) * std::sqrt(std::max(1.0, juliaFractal.get_zoom_x())), 50.0), 10000.0 )) : juliaFractal.set_max_iters(maxIterSliderJulia->getValue());
+                    updateIterationsDynamicallyJulia? juliaFractal.set_max_iters( (unsigned int)std::min( std::max( 300.0 / std::sqrt(240.0) * std::sqrt(std::max(1.0, juliaFractal.get_zoom_x())), 50.0), 10000.0 )) : juliaFractal.set_max_iters(juliaFractal.get_max_iters());
                     needsJuliaRender = true;
                 }
             }
 
+            /// Mouse button pressed event handling.
+            /// Starts dragging for left click, shows iteration lines for right click.
+            /// Triggers 'good' quality render.
             if (const auto* mouseButtonPressedEvent = event->getIf<sf::Event::MouseButtonPressed>()) {
                 if (mouseButtonPressedEvent->button == sf::Mouse::Button::Left) {
                     if (IsInMandelbrotArea) {
@@ -913,6 +944,8 @@ int main() {
                 }
             }
 
+            /// Mouse button released event handling.
+            /// Stops dragging, hides iteration lines.
             if (const auto* mouseButtonReleasedEvent = event->getIf<sf::Event::MouseButtonReleased>()) {
                 if (mouseButtonReleasedEvent->button == sf::Mouse::Button::Left) {
                     if (isLeftMouseDownMandelbrot) {
@@ -931,23 +964,29 @@ int main() {
                 }
             }
 
+            /// Window resize handling.
+            /// Note: Resizing is currently disabled by resetting the window size
+            /// back to its previous dimensions.
             if (const auto pResized = event->getIf<sf::Event::Resized>()) {
-                // WE AIN'T GOING TO DO RESIZING
                 window.setSize(oldWindowSize);
             }
             else {
                 oldWindowSize = window.getSize();
             }
-        } // End event loop
+        }
 
+        /// Check and hide compilation error tooltip after a delay.
         if (compilationErrorPopUp->isVisible() && tooltipTimer.getElapsedTime() > tooltipDisplayDuration) {
             tooltipTimer.restart();
             compilationErrorPopUp->setVisible(false);
         }
 
+        /// Calculate delta time and update frame counter for FPS calculation.
         sf::Time deltaTime = frameClock.restart();
         frameCountForFPS++;
 
+        /// Update Mandelbrot idle time.
+        /// If interacting (dragging/zooming), reset idle time. Otherwise, accumulate.
         bool isDraggingMandelbrotThisFrame = isLeftMouseDownMandelbrot && mouseMovedInMandelbrotArea;
         bool isZoomingMandelbrotThisFrame = isZoomingMandelbrot;
         bool isInteractingMandelbrotThisFrame = isDraggingMandelbrotThisFrame || isZoomingMandelbrotThisFrame;
@@ -958,14 +997,10 @@ int main() {
             mandelbrotIdleTimeMs += deltaTime.asMilliseconds();
         }
 
-        /*
-         * Mandelbrot rendering decision logic:
-         * Determines if a re-render is needed based on flags ('needsMandelbrotRender'),
-         * user interaction ('isInteractingMandelbrotThisFrame'), or idle time exceeding
-         * a threshold ('IDLE_TIME_THRESHOLD_MS'). Interaction forces 'good' quality for
-         * responsiveness, while idle time triggers 'best' quality for refinement if not
-         * already at best quality.
-         */
+        /// Mandelbrot rendering decision logic.
+        /// Determines if a render is needed based on explicit flags,
+        /// user interaction (dragging/zooming), or sufficient idle time
+        /// to trigger a 'best' quality render.
         bool renderMandelbrotThisFrame = false;
         RenderQuality qualityForMandelbrotRender = currentMandelbrotQuality;
 
@@ -994,16 +1029,10 @@ int main() {
 
             mandelbrotRenderClock.restart();
             mandelbrotFractal.render(currentMandelbrotQuality);
-            std::cout << "Rendering Mandelbrot with quality: " << (currentMandelbrotQuality == render_state::good? "Good" : "Best") << std::endl;
         }
-        /*
-         * Julia rendering decision logic:
-         * Similar to Mandelbrot, but also considers timelapse mode ('isTimelapseActive')
-         * and whether the mouse is hovering over the Mandelbrot set to update Julia parameters
-         * ('mouseMovedInMandelbrotArea', '!blockJuliaParameterUpdate'). Timelapse and hover updates
-         * typically use 'good' quality. Idle improvement logic is also present, similar to Mandelbrot,
-         * but avoids triggering if the mouse is over the Mandelbrot area causing parameter updates.
-         */
+
+        /// Update Julia idle time.
+        /// If interacting (dragging/zooming), reset idle time. Otherwise, accumulate.
         bool isDraggingJuliaThisFrame = isLeftMouseDownJulia && mouseMovedInJuliaArea;
         bool isZoomingJuliaThisFrame = isZoomingJulia;
         bool isInteractingJuliaThisFrame = isDraggingJuliaThisFrame || isZoomingJuliaThisFrame;
@@ -1014,6 +1043,11 @@ int main() {
             juliaIdleTime += deltaTime;
         }
 
+        /// Julia rendering decision logic.
+        /// Determines if a render is needed based on explicit flags,
+        /// user interaction, timelapse mode, progressive animation,
+        /// mouse position over the Mandelbrot set (to update Julia parameters),
+        /// or sufficient idle time for a 'best' quality render.
         bool renderJuliaThisFrame = false;
         RenderQuality qualityForJuliaRender = currentJuliaQuality;
         if (isTimelapseActive) {
@@ -1073,10 +1107,10 @@ int main() {
             juliaFractal.setPosition({ static_cast<float>(window.getSize().x - juliaFractal.get_resolution().x), 0.f });
         }
 
-        /*
-         * Drawing phase: Clears buffers, draws fractals to the render target,
-         * draws the render target to the window, then draws UI elements (text, TGUI) on top.
-         */
+        /// Drawing phase.
+        /// Clears the render target and window, draws the fractals to the
+        /// render target, displays the render target on the window,
+        /// and finally draws the TGUI elements and text overlays.
         window.clear(sf::Color::Black);
         renderTarget.clear(sf::Color::Black);
 
@@ -1096,9 +1130,7 @@ int main() {
 
         window.display();
 
-        /*
-         * Periodic update of FPS and hardness display based on a timer.
-         */
+        /// Update FPS and hardness display periodically.
         if (fpsUpdateClock.getElapsedTime().asSeconds() > 0.2f) {
             float elapsedSeconds = fpsUpdateClock.restart().asSeconds();
             float fps = frameCountForFPS / elapsedSeconds;
@@ -1108,14 +1140,12 @@ int main() {
             frameCountForFPS = 0;
         }
 
-        /*
-         * Reset per-frame boolean flags related to mouse movement and zooming.
-         */
+        /// Reset per-frame interaction flags.
         mouseMovedInMandelbrotArea = false;
         isZoomingMandelbrot = false;
         mouseMovedInJuliaArea = false;
         isZoomingJulia = false;
 
-    } // End main loop
+    }
     return 0;
 }

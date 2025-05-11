@@ -1,3 +1,7 @@
+/// Includes necessary headers for fractal rendering (Julia, Mandelbrot),
+/// custom formula handling (NVRTC), CUDA processing utilities,
+/// Julia set timelapse functionality, fractal interaction logic (zoom, pan),
+/// color palette management, iteration path drawing, and TGUI backend integration.
 #include "ClassImplementation/Fractals/JuliaRendering.cuh"
 #include "ClassImplementation/Fractals/MandelbrotRendering.cuh"
 #include "ClassImplementation/CustomFormulaHandling.h"
@@ -8,25 +12,38 @@
 #include "ClassImplementation/IterationPath.h"
 #include <TGUI/Backend/SFML-Graphics.hpp>
 
+/// Template class FractalBase implementation.
+/// Provides common functionality for different fractal types (Mandelbrot, Julia).
+/// Manages fractal parameters, rendering state, memory, and user interaction.
 template <typename Derived>
 FractalBase<Derived>::FractalBase()
-    :
-    thread_stop_flags(std::thread::hardware_concurrency() * 100),
-    max_iterations(MAX_ITERATIONS), basic_zoom_x(BASIC_ZOOM_X), basic_zoom_y(BASIC_ZOOM_Y),
-    zoom_x(basic_zoom_x), zoom_y(basic_zoom_y),
-    x_offset(BASIC_X_OFFSET), y_offset(BASIC_Y_OFFSET),
-    zoom_factor(BASIC_ZOOM_FACTOR), zoom_speed(BASIC_ZOOM_SPEED),
-    zoom_scale(BASIC_ZOOM_SCALE),  maxComputationF(BASIC_MAX_COMPUTATION_F), maxComputationD(BASIC_MAX_COMPUTATION_D),
-    basic_width(BASIC_WIDTH), basic_height(BASIC_HEIGHT),
-    width(basic_width), height(basic_height),
-    sprite(texture), iterationline(sf::PrimitiveType::LineStrip),
-    gen(rd()),
-    disX(-2.f, 2.f), disY(-1.5f, 1.5f),
-    disVelX(-0.13f, 0.13f),disVelY(-0.1f, 0.1f)
+        :
+        /// Initializes flags for potential thread management
+        thread_stop_flags(std::thread::hardware_concurrency() * 100),
+        /// Initializes basic and current fractal parameters like iterations, zoom, offset, and speed.
+        max_iterations(MAX_ITERATIONS), basic_zoom_x(BASIC_ZOOM_X), basic_zoom_y(BASIC_ZOOM_Y),
+        zoom_x(basic_zoom_x), zoom_y(basic_zoom_y),
+        x_offset(BASIC_X_OFFSET), y_offset(BASIC_Y_OFFSET),
+        zoom_factor(BASIC_ZOOM_FACTOR), zoom_speed(BASIC_ZOOM_SPEED),
+        zoom_scale(BASIC_ZOOM_SCALE),  maxComputationF(BASIC_MAX_COMPUTATION_F), maxComputationD(BASIC_MAX_COMPUTATION_D),
+        /// Initializes basic and current resolution.
+        basic_width(BASIC_WIDTH), basic_height(BASIC_HEIGHT),
+        width(basic_width), height(basic_height),
+        /// Initializes SFML sprite and texture for rendering, and primitive type for iteration lines.
+        sprite(texture), iterationline(sf::PrimitiveType::LineStrip),
+        /// Sets up random number generators for timelapse.
+        gen(rd()),
+        disX(-2.f, 2.f), disY(-1.5f, 1.5f),
+        disVelX(-0.13f, 0.13f),disVelY(-0.1f, 0.1f)
 {
     initialized_nvrtc = false;
     created_context = false;
 
+    /// Checks for CUDA device availability. If no device is found,
+    /// it sets a flag indicating CUDA is not available, forcing the use
+    /// of CPU rendering (handled elsewhere, but noted here).
+    /// If CUDA is available, it gets device properties to set the
+    /// compute capability string for NVRTC compilation.
     isCudaAvailable = true;
     int numDevices = 0;
     cudaGetDeviceCount(&numDevices);
@@ -41,22 +58,31 @@ FractalBase<Derived>::FractalBase()
         cudaGetDeviceProperties(&deviceProp, 0);
         compute_capability = "--gpu-architecture=compute_" + std::to_string(deviceProp.major) + std::to_string(deviceProp.minor);
     }
-    palette = createHSVPalette(20000);
-    paletteSize = 20000;
+    /// Creates a default color palette (HSV).
+    palette = createHSVPalette(BASIC_PALETTE_SIZE);
+    paletteSize = BASIC_PALETTE_SIZE;
 
-
+    /// Allocates necessary memory on both host and device (GPU) for image data.
     ALLOCATE_ALL_IMAGE_MEMORY();
+    /// Allocates necessary memory on both host and device (GPU) for non-image data (e.g., iteration counts).
     ALLOCATE_ALL_NON_IMAGE_MEMORY();
 
+    /// Resizes the iteration points vector, used for drawing iteration paths.
     iterationpoints.resize(max_iterations);
 
 }
 
+/// Destructor for the FractalBase class.
+/// Ensures proper cleanup of GPU resources and allocated memory.
 template <typename Derived>
 FractalBase<Derived>::~FractalBase() {
+    /// Frees all allocated memory on both host and device (GPU).
     FREE_ALL_IMAGE_MEMORY();
     FREE_ALL_NON_IMAGE_MEMORY();
+    /// Unloads the NVRTC module if it was loaded.
     if (module_loaded) CU_SAFE_CALL(cuModuleUnload(module));
+    /// Destroys the CUDA context if it was created, using a macro
+    /// to handle context switching if necessary.
     MAKE_CURR_CONTEXT_OPERATION(cudaFree(nullptr), cuCtxDestroy(ctx), context);
 }
 
@@ -90,6 +116,7 @@ double FractalBase<Derived>::get_hardness_coeff() { return hardness_coeff; }
 template <typename Derived>
 sf::Texture FractalBase<Derived>::getTexture() { return texture; }
 
+/// Sets the maximum computation capacity based on measured GPU performance (GFLOPS/GDFLOPS).
 template <typename Derived>
 void FractalBase<Derived>::setMaxComputation(float Gflops, float GDflops) { maxComputationF = 50.0f / 90 * Gflops; maxComputationD = 50.0f / 90 * GDflops; }
 
@@ -109,6 +136,11 @@ unsigned int FractalBase<Derived>::get_compiling_percentage() {
     }
 }
 
+/// Sets the resolution of the fractal image.
+/// When the resolution changes, the zoom and offset are recalculated
+/// to keep the center of the previous view the same, maintaining
+/// the visual focus point.
+/// Existing GPU memory is freed and reallocated for the new resolution.
 template <typename Derived>
 void FractalBase<Derived>::set_resolution(sf::Vector2i target_resolution) {
     unsigned int old_width = width, old_height = height;
@@ -130,7 +162,9 @@ void FractalBase<Derived>::set_resolution(sf::Vector2i target_resolution) {
 }
 
 
-// To surely not forget anything lets make sure to delete everything and reallocate
+/// Resets the fractal view and parameters to their initial default state.
+/// This includes resetting zoom, offset, iterations, and palette.
+/// All existing GPU memory is freed and reallocated to ensure a clean state.
 template <typename Derived>
 void FractalBase<Derived>::reset() {
     // Free existing resources
