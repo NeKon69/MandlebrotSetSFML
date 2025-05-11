@@ -10,7 +10,7 @@
 using RenderQuality = render_state;
 
 #define calculate_size_y(based) \
-  based / (1440.f / window.getSize().y)
+  (based / (1440.f / window.getSize().y))
 
 #define calculate_size_x(based) \
   (based / (2560.f / window.getSize().x))
@@ -72,7 +72,7 @@ int main() {
      * is used to draw the fractals before displaying them on the main window.
      */
     sf::VideoMode windowSize = sf::VideoMode::getDesktopMode();
-    sf::RenderWindow window(windowSize, "Fractals", sf::Style::None, sf::State::Fullscreen);
+    sf::RenderWindow window(windowSize, "Fractals", sf::Style::None, sf::State::Windowed);
     sf::RenderTexture renderTarget;
     renderTarget = sf::RenderTexture(windowSize.size);
     sf::Vector2u oldWindowSize = window.getSize();
@@ -405,6 +405,10 @@ int main() {
     errorText->getRenderer()->setBorders(4);
     gui.add(errorText);
 
+    tgui::ProgressBar::Ptr compilationProgressBar = tgui::ProgressBar::create();
+    compilationProgressBar->setPosition({controlGroupXOffsetMandelbrot + controlWidth + controlPadding / 2, tgui::bindBottom(custom_code) + controlPadding});
+    compilationProgressBar->setSize({calculate_size_x(controlWidth - 5), calculate_size_y(24)});
+    gui.add(compilationProgressBar);
 
     auto parse  = tgui::Button::create("Compile!");
     parse->setPosition({controlGroupXOffsetMandelbrot, tgui::bindBottom(custom_code) + controlPadding});
@@ -412,15 +416,32 @@ int main() {
     parse->onPress([&](){
         parse->getRenderer()->setBorderColor(sf::Color::Blue);
         std::string code = custom_code->getText().toStdString();
+        compilationProgressBar->setVisible(true);
+        gui.draw();
         try {
-            std::optional<std::string> error = mandelbrotFractal.set_custom_formula(code);
-            if(std::size(error.value()) > 1) {
-                errorText->setText("<size=20><b><color=#ff0000>Compilation Error!</color></size>\n" + error.value());
+            std::shared_future<std::string> error = mandelbrotFractal.set_custom_formula(code);
+            std::this_thread::sleep_for(std::chrono::microseconds(10));
+            while(mandelbrotFractal.get_is_compiling()) {
+                compilationProgressBar->setValue(mandelbrotFractal.get_compiling_percentage() / 2.0);
+                std::cout << mandelbrotFractal.get_compiling_percentage() << std::endl;
+                window.clear();
+                window.draw(sf::Sprite(renderTarget.getTexture()));
+                window.draw(mandelbrotHardnessDisplay);
+                window.draw(juliaHardnessDisplay);
+                window.draw(fpsDisplay);
+                gui.draw();
+                window.display();
+            }
+            if(std::size(error.get()) > 1) {
+                errorText->setText("<size=20><b><color=#ff0000>Compilation Error!</color></size>\n" + error.get());
+                compilationProgressBar->setValue(0);
+                compilationProgressBar->setVisible(false);
                 throw std::runtime_error("Compilation error");
             }
             else {
                 errorText->setText("<size=20><color=#00aa00>Compilation Successful</color></size>\n");
             }
+            compilationProgressBar->setValue(50);
             parse->getRenderer()->setBorderColor(sf::Color::Green);
         }
         catch (const std::exception& e) {
@@ -429,14 +450,29 @@ int main() {
             return;
         }
         try {
-            std::optional<std::string> error = juliaFractal.set_custom_formula(code);
-            if(std::size(error.value()) > 1) {
-                errorText->setText("Compilation Error!\n" + error.value());
+            std::shared_future<std::string> error = juliaFractal.set_custom_formula(code);
+            std::this_thread::sleep_for(std::chrono::microseconds(10));
+            while(juliaFractal.get_is_compiling()) {
+                compilationProgressBar->setValue(50 + juliaFractal.get_compiling_percentage() / 2.0);
+                std::cout << juliaFractal.get_compiling_percentage() << std::endl;
+                window.clear();
+                window.draw(sf::Sprite(renderTarget.getTexture()));
+                window.draw(mandelbrotHardnessDisplay);
+                window.draw(juliaHardnessDisplay);
+                window.draw(fpsDisplay);
+                gui.draw();
+                window.display();
+            }
+            if(std::size(error.get()) > 1) {
+                errorText->setText("<size=20><b><color=#ff0000>Compilation Error!</color></size>\n" + error.get());
+                compilationProgressBar->setValue(0);
+                compilationProgressBar->setVisible(false);
                 throw std::runtime_error("Compilation error");
             }
             else {
                 errorText->setText("<size=20><color=#00aa00><b>Compilation Successful</b></color></size>\n");
             }
+            compilationProgressBar->setValue(100);
             parse->getRenderer()->setBorderColor(sf::Color::Green);
         }
         catch (const std::exception& e) {
@@ -447,6 +483,8 @@ int main() {
         needsMandelbrotRender = true;
         needsJuliaRender = true;
         context_switcher_mandelbrot->setSelectedItem("NVRTC");
+        gui.draw();
+        compilationProgressBar->setVisible(false);
     });
     gui.add(parse);
 

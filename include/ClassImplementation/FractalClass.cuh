@@ -10,6 +10,7 @@
 #include <atomic>
 #include <nvrtc.h>
 #include <cuda.h>
+#include <future>
 
 namespace fractals {
 	struct mandelbrot{};
@@ -106,12 +107,17 @@ class FractalBase : public sf::Transformable, public sf::Drawable {
 protected:
 
     // Custom Formula Properties
+    std::thread compile_thread;
+    std::future<std::string> current_compile_future;
+    std::atomic<unsigned int> progress_compiling_percentage = 0;
+    std::string log_buffer;
     context_type context = context_type::CUDA;
     bool custom_formula = false;
     std::string kernel_code;
     CUcontext ctx;
     CUdevice device;
     CUmodule module;
+    std::atomic<bool> is_compiling = false;
     bool module_loaded = false;
     bool created_context;
     CUfunction kernelFloat;
@@ -245,6 +251,8 @@ public:
     double get_zoom_y();
     double get_zoom_scale();
     double get_hardness_coeff();
+    unsigned int get_compiling_percentage();
+    bool get_is_compiling() {return is_compiling;}
 
     void setMaxComputation(float Gflops, float GDflops);
     void setPallete(std::string name);
@@ -271,7 +279,7 @@ public:
 
     void reset();
 
-    std::optional<std::string> set_custom_formula(std::string formula);
+    std::shared_future<std::string> set_custom_formula(const std::string& formula);
 
     context_type get_context();
 

@@ -4,7 +4,6 @@
 #pragma once
 #include "ClassImplementation/FractalClass.cuh"
 #include "ClassImplementation/Macros.h"
-#include <iostream>
 #include "ClassImplementation/CpuFallback.h"
 template <>
 void FractalBase<fractals::mandelbrot>::render(render_state quality) {

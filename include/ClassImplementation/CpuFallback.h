@@ -3,9 +3,9 @@
 //
 #pragma once
 #include "ClassImplementation/FractalClass.cuh"
-#include "../../../../../../usr/lib/gcc/x86_64-pc-linux-gnu/14.2.1/include/c++/iostream"
+#include <iostream>
 template <typename Derived>
-void FractalBase<Derived>::set_grid(dim3 block) {
+    void FractalBase<Derived>::set_grid(dim3 block) {
     dimBlock = block;
     dimGrid = dim3(
             (width + dimBlock.x - 1) / dimBlock.x,

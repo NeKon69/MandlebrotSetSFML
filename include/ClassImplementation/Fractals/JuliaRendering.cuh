@@ -5,7 +5,6 @@
 #include "ClassImplementation/FractalClass.cuh"
 #include "ClassImplementation/Macros.h"
 #include "ClassImplementation/CpuFallback.h"
-#include <iostream>
 template <>
 void FractalBase<fractals::julia>::render(
         render_state quality,
@@ -135,11 +134,7 @@ void FractalBase<fractals::julia>::render(
 
     if(!custom_formula){
         if (render_zoom_x > 1e7) {
-            dimBlock = dim3(10, 10);
-            dimGrid = dim3(
-                    (width + dimBlock.x - 1) / dimBlock.x,
-                    (height + dimBlock.y - 1) / dimBlock.y
-            );
+            set_grid((10, 10));
             fractal_rendering<double><<<dimGrid, dimBlock, 0, stream>>>(
                     d_pixels, len, width, height, render_zoom_x, render_zoom_y,
                             x_offset, y_offset, d_palette, paletteSize,
@@ -147,11 +142,7 @@ void FractalBase<fractals::julia>::render(
             );
         }
         else {
-            dimBlock = dim3(32, 32);
-            dimGrid = dim3(
-                    (width + dimBlock.x - 1) / dimBlock.x,
-                    (height + dimBlock.y - 1) / dimBlock.y
-            );
+            set_grid((32, 32));
             fractal_rendering<float><<<dimGrid, dimBlock, 0, stream>>>(
                     d_pixels, len, width, height, render_zoom_x, render_zoom_y,
                             x_offset, y_offset, d_palette, paletteSize,
@@ -161,11 +152,7 @@ void FractalBase<fractals::julia>::render(
     }
     else { // Custom, Formula handling
         cuCtxSetCurrent(ctx);
-        dimBlock = dim3(32, 32);
-        dimGrid = dim3(
-                (width + dimBlock.x - 1) / dimBlock.x,
-                (height + dimBlock.y - 1) / dimBlock.y
-        );
+        set_grid((32, 32));
 
         double render_zoom_x_d = render_zoom_x;
         double render_zoom_y_d = render_zoom_y;
@@ -233,10 +220,7 @@ void FractalBase<fractals::julia>::render(
 
     cudaError_t err = cudaGetLastError();
     while (err != cudaSuccess && context != context_type::NVRTC) {
-        dimBlock.x -= 2;
-        dimBlock.y -= 2;
-        dimGrid.x = (width + dimBlock.x - 1) / dimBlock.x;
-        dimGrid.y = (height + dimBlock.y - 1) / dimBlock.y;
+        set_grid((dimBlock.x - 2, dimBlock.y - 2));
         if (zoom_x > 1e7) {
             fractal_rendering<double><<<dimGrid, dimBlock, 0, stream>>>(
                     d_pixels, len, width, height, render_zoom_x, render_zoom_y,

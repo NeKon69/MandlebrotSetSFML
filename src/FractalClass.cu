@@ -98,6 +98,16 @@ template <typename Derived>
 sf::Vector2i FractalBase<Derived>::get_resolution() const { return {int(basic_width), int(basic_height)}; }
 
 template <typename Derived>
+unsigned int FractalBase<Derived>::get_compiling_percentage() {
+    if (context == context_type::NVRTC) {
+        return progress_compiling_percentage;
+    }
+    else {
+        return 0;
+    }
+}
+
+template <typename Derived>
 void FractalBase<Derived>::set_resolution(sf::Vector2i target_resolution) {
     unsigned int old_width = width, old_height = height;
 
