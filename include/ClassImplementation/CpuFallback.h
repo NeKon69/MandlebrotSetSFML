@@ -24,7 +24,7 @@ void FractalBase<Derived>::set_grid(dim3 block) {
 /// and calculates pixel colors. Includes a mechanism to be stopped via `finish_flag`.
 void cpu_render_mandelbrot(render_target target, unsigned char* pixels, unsigned int width, unsigned int height, double zoom_x, double zoom_y,
                            double x_offset, double y_offset, Color* palette, unsigned int paletteSize,
-                           unsigned int max_iterations, unsigned int* total_iterations, std::atomic<unsigned char>& finish_flag
+                           unsigned int max_iterations, unsigned int* total_iterations, std::atomic<unsigned char>& finish_flag, std::mutex& mutex
 )
 {
     try {
@@ -107,7 +107,6 @@ void cpu_render_mandelbrot(render_target target, unsigned char* pixels, unsigned
             }
         }
         /// Atomically add local iterations to the global counter (via mutex).
-        std::mutex mutex; // Mutex for thread safety
         mutex.lock();
         *total_iterations += total_iterations_local;
         mutex.unlock();
@@ -126,7 +125,7 @@ void cpu_render_mandelbrot(render_target target, unsigned char* pixels, unsigned
 void cpu_render_julia(render_target target, unsigned char* pixels, unsigned int width, unsigned int height, double zoom_x, double zoom_y,
                       double x_offset, double y_offset, Color* palette, unsigned int paletteSize,
                       unsigned int max_iterations, unsigned int* total_iterations, std::atomic<unsigned char>& finish_flag,
-                      double seed_real, double seed_imag
+                      double seed_real, double seed_imag, std::mutex& mutex
 )
 {
     try {
@@ -211,7 +210,6 @@ void cpu_render_julia(render_target target, unsigned char* pixels, unsigned int 
             }
         }
         /// Atomically add local iterations to the global counter (via mutex).
-        std::mutex mutex; // Mutex for thread safety
         mutex.lock();
         *total_iterations += total_iterations_local;
         mutex.unlock();

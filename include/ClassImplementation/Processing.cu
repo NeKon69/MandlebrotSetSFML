@@ -14,6 +14,7 @@ template <typename Derived>
 void FractalBase<Derived>::post_processing() {
     if(!isCudaAvailable){
         image.resize({ basic_width, basic_height }, pixels);
+        hardness_coeff = *h_total_iterations / (width * height * 1.0);
     }
     else if (antialiasing) {
         // SSAA rendering

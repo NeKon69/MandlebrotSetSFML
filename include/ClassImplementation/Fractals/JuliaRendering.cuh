@@ -22,11 +22,14 @@ void FractalBase<fractals::julia>::render(
         if (quality == render_state::best) { // CPU 'best' quality is not implemented.
             return;
         }
+
+
         /// Global lock to ensure only one CPU render is active.
         bool expected_state = false;
         if (!g_isCpuRendering.compare_exchange_strong(expected_state, true, std::memory_order_acq_rel)) {
             return;
         }
+        *h_total_iterations = 0; // Reset total iterations for CPU rendering.
         /// Launch CPU rendering in a detached background thread.
         std::thread main_thread([&]() {
             RenderGuard renderGuard(g_isCpuRendering); // RAII lock release.
@@ -62,12 +65,13 @@ void FractalBase<fractals::julia>::render(
                 return;
             }
 
+            std::mutex mutex;
             /// Launch CPU worker threads.
             for (unsigned int i = 0; i < actual_threads_to_launch; ++i) {
                 thread_stop_flags[i].store(0, std::memory_order_release);
                 std::thread t(cpu_render_julia, render_targets[i], pixels, basic_width, basic_height,
                               zoom_x, zoom_y, x_offset, y_offset, palette.data(), paletteSize,
-                              max_iterations, h_total_iterations, std::ref(thread_stop_flags[i]), zreal, zimag);
+                              max_iterations, h_total_iterations, std::ref(thread_stop_flags[i]), zreal, zimag, std::ref(mutex));
                 t.detach();
             }
 
@@ -85,8 +89,10 @@ void FractalBase<fractals::julia>::render(
                 if (all_done) break;
                 post_processing();
                 std::this_thread::sleep_for(THREAD_SLEEP_TIME);
+                std::cout << "Total iterations: " << *h_total_iterations << "\n";
             }
             post_processing();
+            std::cout << "Total iterations (Final): " << *h_total_iterations << "\n";
         });
         main_thread.detach();
         return;

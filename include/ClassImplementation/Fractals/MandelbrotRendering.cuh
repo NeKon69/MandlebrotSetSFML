@@ -24,7 +24,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
         if (!g_isCpuRendering.compare_exchange_strong(expected_state, true, std::memory_order_acq_rel)) {
             return; // Another CPU render is already in progress.
         }
-
+        *h_total_iterations = 0; // Reset total iterations for CPU rendering.
         /// Launch the CPU rendering logic in a detached background thread.
         std::thread main_thread([&]() {
             /// RAII guard to ensure the global CPU rendering lock (`g_isCpuRendering`)
@@ -65,12 +65,13 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
                 return; // No work to do or misconfiguration.
             }
 
+            std::mutex mutex;
             /// Launch worker threads for CPU rendering.
             for (unsigned int i = 0; i < actual_threads_to_launch; ++i) {
                 thread_stop_flags[i].store(0, std::memory_order_release); // Mark as 'working'
                 std::thread t(cpu_render_mandelbrot, render_targets[i], pixels, basic_width, basic_height,
                               zoom_x, zoom_y, x_offset, y_offset, palette.data(), paletteSize,
-                              max_iterations, h_total_iterations, std::ref(thread_stop_flags[i]));
+                              max_iterations, h_total_iterations, std::ref(thread_stop_flags[i]), std::ref(mutex));
                 t.detach(); // Detach worker threads; completion managed by flags.
             }
 
