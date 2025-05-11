@@ -11,6 +11,7 @@ The main feature of the demo application is a dynamic **dual-view setup**: you s
 **No NVIDIA GPU? No problem!** The project includes a fallback that uses your computer's main processor (**CPU**) to render basic views, so you can still explore the basics (though performance will be significantly slower, as well as features).
 
 ![Dual View Demo](Images/dual_view_demo.png)
+
 _Screenshot of the dual-view demo application_
 
 ## Key Features You'll Love
@@ -20,7 +21,9 @@ _Screenshot of the dual-view demo application_
 *   **See the Mandelbrot and Julia Sets:** Explore two of the most iconic fractals. The code is also structured to easily add other types later.
 *   **Linked Views:** Interact with the Mandelbrot set to see how it changes the Julia set in real-time on the side-by-side display. You can turn this linking on or off.
 *   **Draw Your Own Fractals:** **(Advanced!)** Write your own mathematical formula directly in the application using the built-in **runtime compiler (NVRTC)** and see it rendered instantly!
+
     ![Custom Formula Editor](Images/custom_formula_editor.png)
+
     _The custom formula input area_
 *   **Switch Rendering Modes:** Easily toggle between using the standard, included rendering code (CUDA) and your own custom formulas compiled on-the-fly (NVRTC).
 *   **Sharp Images When Still:** Automatically improves the image quality when you stop moving. It renders at a higher resolution and uses **4x Super-Sampling Anti-Aliasing (SSAA)** to make edges smoother and details clearer.
@@ -28,11 +31,14 @@ _Screenshot of the dual-view demo application_
 *   **Lots of Colors:** Pick from a wide variety of built-in color schemes (like Fire, Water, Psychedelic, Deep Space, and more!). A slider lets you fine-tune some palettes like the classic HSV one.
 
     ![Palette Selection](Images/palette_selector.png)
+
     _Color palette and HSV offset controls_
 *   **Control the Detail:** Adjust how many calculations (iterations) are performed for each pixel. Higher numbers show more detail, especially in deep zooms. There's an optional mode to automatically increase iterations as you explore.
 *   **Easy Navigation:** Zoom with your mouse wheel and pan by clicking and dragging. You can also nudge the Mandelbrot view using the WASD keys.
 *   **See the Path:** Hold the right mouse button over the Mandelbrot set to visualize the escape path of the point under your cursor – a cool way to see the math in action.
+
     ![Iteration Path Visualization](Images/iteration_path.png)
+
     _Visualizing the escape path_
 *   **Julia Set Animation:** **(Experimental!)** Toggle a mode where the Julia set constantly changes parameters, creating a mesmerizing, evolving animation.
 *   **Save Your Views:** Press a key to quickly save a screenshot of the Mandelbrot view.
@@ -216,12 +222,15 @@ Remember to adjust include paths (`#include "ClassImplementation/FractalClass.cu
 Here are a few examples of the kind of detail and color you can explore with the CUDA Fractal Explorer:
 
 ![Beautiful View 1](Images/beautiful_view_1.png)
+
 _Example of a deep zoom into the Mandelbrot set_
 
 ![Beautiful View 2](Images/beautiful_view_2.png)
+
 _Another intricate region with rich colors_
 
 ![Beautiful View 3](Images/beautiful_view_3.png)
+
 _A view showing both Mandelbrot and a linked Julia set_
 
 ## Questions or Issues?
