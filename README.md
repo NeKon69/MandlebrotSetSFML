@@ -26,6 +26,7 @@ _Screenshot of the dual-view demo application_
 *   **Sharp Images When Still:** Automatically improves the image quality when you stop moving. It renders at a higher resolution and uses **4x Super-Sampling Anti-Aliasing (SSAA)** to make edges smoother and details clearer.
 *   **Change the View Size:** Set the resolution for the Mandelbrot and Julia views independently, right from the interface.
 *   **Lots of Colors:** Pick from a wide variety of built-in color schemes (like Fire, Water, Psychedelic, Deep Space, and more!). A slider lets you fine-tune some palettes like the classic HSV one.
+
     ![Palette Selection](Images/palette_selector.png)
     _Color palette and HSV offset controls_
 *   **Control the Detail:** Adjust how many calculations (iterations) are performed for each pixel. Higher numbers show more detail, especially in deep zooms. There's an optional mode to automatically increase iterations as you explore.
