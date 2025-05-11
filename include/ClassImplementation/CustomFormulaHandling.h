@@ -2,8 +2,9 @@
 // Created by progamers on 5/6/25.
 //
 #pragma once
-#include "ClassImplementation/FractalClass.cuh"
-#include "ClassImplementation/Macros.h"
+#include "HardCodedVars.h"
+#include "FractalClass.cuh"
+#include "Macros.h"
 #include "kernelCodeStr.h"
 #include <iostream>
 #include <fstream>
@@ -94,7 +95,6 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
 
             // Prepare compile options
             std::vector<const char *> compile_options;
-            // Use this->gpu_architecture_option (member)
             compile_options.push_back(compute_capability.c_str());
             compile_options.push_back("--use_fast_math");
             const char **opts = compile_options.data();
@@ -136,8 +136,6 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
                 this->progress_compiling_percentage = 75;
             }
 
-            // Get lowered kernel names
-            // Use local prog, write to this->lowered_kernel_name_..._str (members)
             const char *lowered_name_float_ptr = nullptr;
             if (prog) {
                 NVRTC_SAFE_CALL(nvrtcGetLoweredName(prog, ("fractal_rendering_" + fractal_name_str + "<float>").c_str(),
@@ -146,7 +144,7 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
             if (!lowered_name_float_ptr)
                 throw std::runtime_error(
                         "Could not get lowered name for fractal_rendering_" + fractal_name_str + "<float>");
-            lowered_kernel_name_float_str = lowered_name_float_ptr; // Write to member
+            lowered_kernel_name_float_str = lowered_name_float_ptr;
 
             const char *lowered_name_double_ptr = nullptr;
             if (prog) {
@@ -157,19 +155,18 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
             if (!lowered_name_double_ptr)
                 throw std::runtime_error(
                         "Could not get lowered name for fractal_rendering_" + fractal_name_str + "<double>");
-            lowered_kernel_name_double_str = lowered_name_double_ptr; // Write to member
+            lowered_kernel_name_double_str = lowered_name_double_ptr;
 
             const char *lowered_name_ssaa_ptr = nullptr;
             if (prog) { NVRTC_SAFE_CALL(nvrtcGetLoweredName(prog, "ANTIALIASING_SSAA4", &lowered_name_ssaa_ptr)); }
             if (!lowered_name_ssaa_ptr) throw std::runtime_error("Could not get lowered name for ANTIALIASING_SSAA4");
-            lowered_kernel_name_ssaa_str = lowered_name_ssaa_ptr; // Write to member
+            lowered_kernel_name_ssaa_str = lowered_name_ssaa_ptr;
 
             this->progress_compiling_percentage = 85;
 
-            // Get PTX
             size_t ptxSize = 0;
             if (prog) { NVRTC_SAFE_CALL(nvrtcGetPTXSize(prog, &ptxSize)); }
-            std::vector<char> ptx; // Local variable
+            std::vector<char> ptx;
             if (ptxSize > 0) {
                 ptx.resize(ptxSize);
                 NVRTC_SAFE_CALL(nvrtcGetPTX(prog, ptx.data()));

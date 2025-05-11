@@ -262,7 +262,6 @@ public:
 
     void SetDegreesOffsetForHSV(int degrees);
     sf::Texture getTexture();
-    sf::Sprite get_sprite_rect();
 
     /*
     @brief sets max_iterations to new given number

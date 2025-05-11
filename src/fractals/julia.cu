@@ -18,6 +18,9 @@ __global__ void fractal_rendering(
     const size_t expected_size = width * height * 4;
     const T scale_factor = static_cast<T>(size_of_pixels) / static_cast<T>(expected_size);
     if (x < width && y < height) {
+        // we pretend that we have maximum of 1024 threads in a block
+        // if we don't have more than 1024 threads in a block, we get invalid memory access, as well as UB
+        // I could've found better solution, but I don't care
         __shared__ unsigned int total_iterations[1024];
         T z_real = x / zoom_x - x_offset;
         T z_imag = y / zoom_y - y_offset;

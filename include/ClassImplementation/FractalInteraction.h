@@ -2,7 +2,8 @@
 // Created by progamers on 5/6/25.
 //
 #pragma once
-#include "ClassImplementation/FractalClass.cuh"
+#include "HardCodedVars.h"
+#include "FractalClass.cuh"
 // Mouse pos should be relative to the picture and not to the screen
 template <typename Derived>
 void FractalBase<Derived>::handleZoom(double wheel_delta, const sf::Vector2i mouse_pos) {
@@ -14,18 +15,17 @@ void FractalBase<Derived>::handleZoom(double wheel_delta, const sf::Vector2i mou
 
     double zoom_change = 1.0 + wheel_delta * zoom_speed;
     zoom_factor *= zoom_change;
-    zoom_factor = std::max(std::min(zoom_factor, 100000000000000.0), 0.01);
+    zoom_factor = std::max(std::min(zoom_factor, MAX_ZOOM_FACTOR), MIN_ZOOM_FACTOR);
 
     zoom_x = basic_zoom_x * zoom_factor;
     zoom_y = basic_zoom_y * zoom_factor;
 
-    double image_mouse_x = mouse_pos.x * 1.0;
-    double image_mouse_y = mouse_pos.y * 1.0;
+    double image_mouse_x = mouse_pos.x;
+    double image_mouse_y = mouse_pos.y;
 
 
     x_offset = old_x_offset + (image_mouse_x / zoom_x - image_mouse_x / old_zoom_x);
     y_offset = old_y_offset + (image_mouse_y / zoom_y - image_mouse_y / old_zoom_y);
-
 }
 
 template <typename Derived>

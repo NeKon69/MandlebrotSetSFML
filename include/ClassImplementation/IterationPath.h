@@ -4,6 +4,7 @@
 
 #ifndef MANDELBROTPROJECT_ITERATIONPATH_H
 #define MANDELBROTPROJECT_ITERATIONPATH_H
+#include "HardCodedVars.h"
 #include "FractalClass.cuh"
 
 template <>

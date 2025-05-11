@@ -2,7 +2,8 @@
 // Created by progamers on 5/6/25.
 //
 #pragma once
-#include "ClassImplementation/FractalClass.cuh"
+#include "HardCodedVars.h"
+#include "FractalClass.cuh"
 #include <iostream>
 template <typename Derived>
     void FractalBase<Derived>::set_grid(dim3 block) {
@@ -19,7 +20,7 @@ void cpu_render_mandelbrot(render_target target, unsigned char* pixels, unsigned
 )
 {
     try {
-
+        unsigned int total_iterations_local = 0;
         finish_flag.store(0);
         if (target.x_end > width) {
             target.x_end = width;
@@ -98,9 +99,10 @@ void cpu_render_mandelbrot(render_target target, unsigned char* pixels, unsigned
                 pixels[index + 1] = g;
                 pixels[index + 2] = b;
                 pixels[index + 3] = 255;
-                *total_iterations += curr_iter;
+                total_iterations_local += curr_iter;
             }
         }
+        *total_iterations += total_iterations_local;
     }
     catch (const std::exception& e) {
         std::cerr << "ERROR in cpu_render_mandelbrot thread (target y=" << target.y_start << "): " << e.what() << std::endl;
@@ -117,6 +119,7 @@ void cpu_render_julia(render_target target, unsigned char* pixels, unsigned int 
 )
 {
     try {
+        unsigned int total_iterations_local = 0;
         finish_flag.store(0);
         if (target.x_end > width) {
             target.x_end = width;
@@ -193,9 +196,10 @@ void cpu_render_julia(render_target target, unsigned char* pixels, unsigned int 
                 pixels[index + 1] = g;
                 pixels[index + 2] = b;
                 pixels[index + 3] = 255;
-                *total_iterations += curr_iter;
+                total_iterations_local += curr_iter;
             }
         }
+        *total_iterations += total_iterations_local;
     }
     catch (const std::exception& e) {
         std::cerr << "ERROR in cpu_render_julia thread (target y=" << target.y_start << "): " << e.what() << std::endl;

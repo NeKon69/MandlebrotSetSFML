@@ -12,13 +12,13 @@ template <typename Derived>
 FractalBase<Derived>::FractalBase()
     :
     thread_stop_flags(std::thread::hardware_concurrency() * 100),
-    max_iterations(300), basic_zoom_x(240.0), basic_zoom_y(240.0),
+    max_iterations(MAX_ITERATIONS), basic_zoom_x(BASIC_ZOOM_X), basic_zoom_y(BASIC_ZOOM_Y),
     zoom_x(basic_zoom_x), zoom_y(basic_zoom_y),
-    x_offset(2.25), y_offset(1.25),
-    zoom_factor(1.0), zoom_speed(0.1),
-    zoom_scale(1.0),  maxComputationF(50.f), maxComputationD(50.f),
-    basic_width(800), basic_height(600),
-    width(800), height(600),
+    x_offset(BASIC_X_OFFSET), y_offset(BASIC_Y_OFFSET),
+    zoom_factor(BASIC_ZOOM_FACTOR), zoom_speed(BASIC_ZOOM_SPEED),
+    zoom_scale(BASIC_ZOOM_SCALE),  maxComputationF(BASIC_MAX_COMPUTATION_F), maxComputationD(BASIC_MAX_COMPUTATION_D),
+    basic_width(BASIC_WIDTH), basic_height(BASIC_HEIGHT),
+    width(basic_width), height(basic_height),
     sprite(texture), iterationline(sf::PrimitiveType::LineStrip),
     gen(rd()),
     disX(-2.f, 2.f), disY(-1.5f, 1.5f),
@@ -90,9 +90,6 @@ double FractalBase<Derived>::get_hardness_coeff() { return hardness_coeff; }
 template <typename Derived>
 sf::Texture FractalBase<Derived>::getTexture() { return texture; }
 
-template<typename Derived>
-sf::Sprite FractalBase<Derived>::get_sprite_rect() { return sprite; }
-
 template <typename Derived>
 void FractalBase<Derived>::setMaxComputation(float Gflops, float GDflops) { maxComputationF = 50.0f / 90 * Gflops; maxComputationD = 50.0f / 90 * GDflops; }
 
@@ -144,12 +141,12 @@ void FractalBase<Derived>::reset() {
 
     if (std::is_same<Derived, fractals::julia>::value) {
         x_offset = 2.5;
-        palette = createHSVPalette(20000);
-        paletteSize = 20000;
+        palette = createHSVPalette(BASIC_PALETTE_SIZE);
+        paletteSize = BASIC_PALETTE_SIZE;
     }
     else {
-        palette = createHSVPalette(20000);
-        paletteSize = 20000;
+        palette = createHSVPalette(BASIC_PALETTE_SIZE);
+        paletteSize = BASIC_PALETTE_SIZE;
     }
 
     if(context == context_type::NVRTC) cuCtxSetCurrent(ctx);

@@ -2,7 +2,8 @@
 // Created by progamers on 5/6/25.
 //
 #pragma once
-#include "ClassImplementation/FractalClass.cuh"
+#include "HardCodedVars.h"
+#include "FractalClass.cuh"
 template <>
 void FractalBase<fractals::julia>::start_timelapse() {
     timelapse.zx = disX(gen);
@@ -16,19 +17,10 @@ void FractalBase<fractals::julia>::update_timelapse() {
     const auto elapsed = clock.getElapsedTime();
     const auto elapsedMs = elapsed.asMilliseconds();
 
-    constexpr float frameTimeMs = 1000.0f / 360.0f;
-
     if (elapsedMs <= frameTimeMs) return;
 
     float deltaTime = elapsedMs / 1000.0f;
     clock.restart();
-
-    constexpr float GRAVITATIONAL_STRENGTH = 0.1f;
-    constexpr float EVENT_HORIZON = 0.1f;
-    constexpr float MAX_VEL = 20.0f;
-    constexpr float VELOCITY_DAMPING = 0.9995f;
-    constexpr float TARGET_CHANGE_TIME = 2.0f;
-    constexpr float TRANSITION_SPEED = 3.5f;
 
     static float timeToTargetChange = TARGET_CHANGE_TIME;
     static float targetZX = 0.0f;

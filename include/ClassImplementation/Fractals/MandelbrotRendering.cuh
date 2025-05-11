@@ -2,6 +2,7 @@
 // Created by progamers on 5/6/25.
 //
 #pragma once
+#include "HardCodedVars.h"
 #include "ClassImplementation/FractalClass.cuh"
 #include "ClassImplementation/Macros.h"
 #include "ClassImplementation/CpuFallback.h"
@@ -112,7 +113,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
                 // Allows updating the display or performing other tasks periodically while rendering.
                 post_processing();
                 // Sleep briefly to avoid pegging the CPU core running this management thread.
-                std::this_thread::sleep_for(std::chrono::microseconds(1));
+                std::this_thread::sleep_for(THREAD_SLEEP_TIME);
             }
 
             // Final update after all threads are confirmed done.
@@ -129,8 +130,8 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
     } // End of if (!isCudaAvailable)
     RECALCULATE_RENDER_PARAMS(quality);
     if(!custom_formula){
-        if (render_zoom_x > 1e7) {
-            set_grid({10, 10});
+        if (render_zoom_x > DOUBLE_PRECISION_ZOOM_THRESHOLD) {
+            set_grid(BLOCK_SIZE_DOUBLE);
             fractal_rendering<double><<<dimGrid, dimBlock, 0, stream>>>(
                     d_pixels, len, width, height, render_zoom_x, render_zoom_y,
                             x_offset, y_offset, d_palette, paletteSize,
@@ -138,7 +139,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
             );
         }
         else {
-            set_grid({32, 32});
+            set_grid(BLOCK_SIZE_FLOAT);
 
             fractal_rendering<float><<<dimGrid, dimBlock, 0, stream>>>(
                     d_pixels, len, width, height, render_zoom_x, render_zoom_y,
@@ -148,7 +149,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
         }
     }
     else { // Custom, Formula handling
-        cuCtxSetCurrent(ctx);
+        CU_SAFE_CALL(cuCtxSetCurrent(ctx));
 
         double render_zoom_x_d = render_zoom_x;
         double render_zoom_y_d = render_zoom_y;
@@ -160,8 +161,8 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
         unsigned int width_val = width;
         unsigned int height_val = height;
 
-        if (zoom_x > 1e7) {
-            set_grid({10, 10});
+        if (zoom_x > DOUBLE_PRECISION_ZOOM_THRESHOLD) {
+            set_grid(BLOCK_SIZE_DOUBLE);
             void* args[] = {
                     &cu_d_pixels,
                     &len,
@@ -181,7 +182,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
                                         0, CUss,
                                         args, nullptr));
         } else { // Запуск float-версии
-            set_grid({32, 32});
+            set_grid(BLOCK_SIZE_FLOAT);
             float render_zoom_x_f = static_cast<float>(render_zoom_x_d);
             float render_zoom_y_f = static_cast<float>(render_zoom_y_d);
             float x_offset_f = static_cast<float>(x_offset_d);
@@ -213,8 +214,8 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
 
     cudaError_t err = cudaGetLastError();
     while (err != cudaSuccess && context != context_type::NVRTC) {
-        set_grid({dimBlock.x - 2, dimBlock.y - 2});
-        if (zoom_x > 1e7) {
+        set_grid({dimBlock.x - BLOCK_SUBSTRACTION, dimBlock.y - BLOCK_SUBSTRACTION});
+        if (zoom_x > DOUBLE_PRECISION_ZOOM_THRESHOLD) {
             fractal_rendering<double><<<dimGrid, dimBlock, 0, stream>>>(
                     d_pixels, len, width, height, render_zoom_x, render_zoom_y,
                             x_offset, y_offset, d_palette, paletteSize,
@@ -229,7 +230,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
             );
         }
         err = cudaGetLastError();
-        if (dimBlock.x < 3) {
+        if (dimBlock.x < BLOCK_SUBSTRACTION + 1) {
             std::cerr << "Critical Issue (mandelbrot set): " << cudaGetErrorString(err) << "\n";
             return;
         }

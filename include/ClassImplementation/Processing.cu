@@ -2,8 +2,9 @@
 // Created by progamers on 5/6/25.
 //
 #pragma once
-#include "ClassImplementation/FractalClass.cuh"
-#include "ClassImplementation/Macros.h"
+#include "FractalClass.cuh"
+#include "Macros.h"
+#include "HardCodedVars.h"
 #include <iostream>
 
 template <typename Derived>
@@ -13,11 +14,7 @@ void FractalBase<Derived>::post_processing() {
     }
     else if (antialiasing) {
         // SSAA rendering
-        dim3 dimBlock(32, 32);
-        dim3 dimGrid(
-                (width + dimBlock.x - 1) / dimBlock.x,
-                (height + dimBlock.y - 1) / dimBlock.y
-        );
+        set_grid(BLOCK_SIZE_ANTIALIASING);
         if(!custom_formula){
             // Launch kernel, copy to host, synchronize stream
             ANTIALIASING_SSAA4<<<dimGrid, dimBlock, 0, stream>>>(d_pixels, ssaa_buffer, basic_width * 2, basic_height * 2, basic_width, basic_height);

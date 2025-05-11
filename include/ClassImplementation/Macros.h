@@ -127,19 +127,17 @@
     size_t len = static_cast<size_t>(width) * height * 4;
 
 #define INIT_BASIC_VALUES \
-    max_iterations = 300; \
-    basic_zoom_x = 240.0; \
-    basic_zoom_y = 240.0; \
+    max_iterations = MAX_ITERATIONS; \
+    basic_zoom_x = BASIC_ZOOM_X; \
+    basic_zoom_y = BASIC_ZOOM_Y; \
     zoom_x = basic_zoom_x; \
     zoom_y = basic_zoom_y; \
-    x_offset = 2.25; \
-    y_offset = 1.25; \
-    zoom_factor = 1.0; \
-    zoom_speed = 0.1; \
-    zoom_scale = 1.0; \
-    maxComputationF = 50.f; \
-    maxComputationD = 50.f; \
-    basic_width = 800; \
-    basic_height = 600; \
+    x_offset = BASIC_X_OFFSET; \
+    y_offset = BASIC_Y_OFFSET; \
+    zoom_factor = BASIC_ZOOM_FACTOR; \
+    zoom_speed = BASIC_ZOOM_SPEED; \
+    zoom_scale = BASIC_ZOOM_SCALE; \
+    basic_width = BASIC_WIDTH; \
+    basic_height = BASIC_HEIGHT; \
     width = basic_width; \
     height = basic_height;

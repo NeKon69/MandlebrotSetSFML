@@ -2,9 +2,10 @@
 // Created by progamers on 5/6/25.
 //
 #pragma once
-#include "ClassImplementation/FractalClass.cuh"
+#include "HardCodedVars.h"
+#include "FractalClass.cuh"
 #include <iostream>
-#include "ClassImplementation/Macros.h"
+#include "Macros.h"
 template <typename Derived>
 void FractalBase<Derived>::setPallete(std::string name) {
     auto it = s_palette_name_to_enum.find(name);
@@ -12,7 +13,7 @@ void FractalBase<Derived>::setPallete(std::string name) {
     if (it != s_palette_name_to_enum.end()) {
         Palletes target_palette_enum = it->second;
 
-        const unsigned int palette_size = 20000;
+        const unsigned int palette_size = BASIC_PALETTE_SIZE;
         bool creation_successful = true;
 
         switch (target_palette_enum) {

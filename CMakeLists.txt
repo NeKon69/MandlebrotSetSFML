@@ -46,6 +46,7 @@ set(CUDA_SOURCES
         include/fractals/custom.cuh
         include/ClassImplementation/FractalClass.cuh
         include/ClassImplementation/Processing.cu
+        include/HardCodedVars.h
 
 
 )
