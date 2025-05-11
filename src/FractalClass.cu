@@ -36,6 +36,11 @@ FractalBase<Derived>::FractalBase()
         std::cout << "Please make sure you have CUDA installed and your GPU supports it" << std::endl;
         isCudaAvailable = false;
     }
+    else {
+        cudaDeviceProp deviceProp;
+        cudaGetDeviceProperties(&deviceProp, 0);
+        compute_capability = "--gpu-architecture=compute_" + std::to_string(deviceProp.major) + std::to_string(deviceProp.minor);
+    }
     palette = createHSVPalette(20000);
     paletteSize = 20000;
 

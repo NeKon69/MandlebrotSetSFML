@@ -408,6 +408,7 @@ int main() {
     tgui::ProgressBar::Ptr compilationProgressBar = tgui::ProgressBar::create();
     compilationProgressBar->setPosition({controlGroupXOffsetMandelbrot + controlWidth + controlPadding / 2, tgui::bindBottom(custom_code) + controlPadding});
     compilationProgressBar->setSize({calculate_size_x(controlWidth - 5), calculate_size_y(24)});
+    compilationProgressBar->setVisible(false);
     gui.add(compilationProgressBar);
 
     tgui::Label::Ptr compilationErrorPopUp = tgui::Label::create();
@@ -446,6 +447,7 @@ int main() {
                 window.display();
             }
             if(std::size(error.get()) > 1) {
+                tooltipTimer.restart();
                 compilationErrorPopUp->setVisible(true);
                 errorText->setText("<size=20><b><color=#ff0000>Compilation Error!</color></size>\n" + error.get());
                 compilationProgressBar->setValue(0);
@@ -478,6 +480,7 @@ int main() {
                 window.display();
             }
             if(std::size(error.get()) > 1) {
+                tooltipTimer.restart();
                 compilationErrorPopUp->setVisible(true);
                 errorText->setText("<size=20><b><color=#ff0000>Compilation Error!</color></size>\n" + error.get());
                 compilationProgressBar->setValue(0);
@@ -728,6 +731,7 @@ int main() {
      * and draws the final frame.
      */
 
+    window.setFramerateLimit(360);
     while (window.isOpen()) {
         /*
          * Event processing loop: handles all user input and window events.
@@ -936,6 +940,7 @@ int main() {
         } // End event loop
 
         if (compilationErrorPopUp->isVisible() && tooltipTimer.getElapsedTime() > tooltipDisplayDuration) {
+            tooltipTimer.restart();
             compilationErrorPopUp->setVisible(false);
         }
 

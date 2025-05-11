@@ -95,14 +95,15 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
             // Prepare compile options
             std::vector<const char *> compile_options;
             // Use this->gpu_architecture_option (member)
-            compile_options.push_back("--gpu-architecture=compute_75");
+            compile_options.push_back(compute_capability.c_str());
+            compile_options.push_back("--use_fast_math");
             const char **opts = compile_options.data();
             int num_opts = compile_options.size();
 
             this->progress_compiling_percentage = 35;
 
             // Compile the program
-            nvrtcResult compileResult = nvrtcCompileProgram(prog, num_opts, opts); // Local variable
+            nvrtcResult compileResult = nvrtcCompileProgram(prog, num_opts, opts);
 
             // Get compilation log
             size_t logSize = 0;

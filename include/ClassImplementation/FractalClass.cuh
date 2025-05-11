@@ -108,6 +108,7 @@ protected:
 
     // Custom Formula Properties
     std::thread compile_thread;
+    std::string compute_capability;
     std::future<std::string> current_compile_future;
     std::atomic<unsigned int> progress_compiling_percentage = 0;
     std::string log_buffer;
