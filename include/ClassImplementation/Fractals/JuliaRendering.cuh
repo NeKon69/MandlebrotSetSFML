@@ -87,9 +87,8 @@ void FractalBase<fractals::julia>::render(
                 // Launch the actual rendering function (e.g., cpu_render_mandelbrot) in a new thread.
                 std::thread t(cpu_render_julia, render_targets[i], pixels, basic_width, basic_height,
                               zoom_x, zoom_y, x_offset, y_offset, palette.data(), paletteSize,
-                              max_iterations, h_total_iterations, std::ref(thread_stop_flags[i]), zreal, zimag); // Pass flag by ref
+                              max_iterations, h_total_iterations, std::ref(thread_stop_flags[i]), zreal, zimag);
 
-                // Detach the worker thread: The main_thread won't wait (join) for it directly.
                 // Completion is tracked using the atomic stop flags.
                 t.detach();
             }

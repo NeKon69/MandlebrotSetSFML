@@ -592,6 +592,7 @@ int main() {
                 int height = std::stoi(height_str);
                 if(width >= 100 && height >= 100 && width <= 8192 && height <= 8192) {
                     juliaFractal.set_resolution({width, height});
+                    juliaHardnessDisplay.setPosition({ static_cast<float>(window.getSize().x - juliaFractal.get_resolution().x + 10), 40.f });
                     needsJuliaRender = true;
                 } else {
                     resolutionPickerJulia->getRenderer()->setBorderColor(sf::Color::Yellow);

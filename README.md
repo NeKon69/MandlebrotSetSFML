@@ -235,7 +235,7 @@ _A view showing both Mandelbrot and a linked Julia set_
 
 ## Questions or Issues?
 
-If you find bugs, have ideas for new features, or run into problems, please let us know!
+If you find bugs, have ideas for new features, or run into problems, please let me know!
 
 *   **Report Issues Here:** [https://github.com/NeKon69/MandlebrotSetSFML/issues](https://github.com/NeKon69/MandlebrotSetSFML/issues)
 *   **Email:** nobodqwe@gmail.com
