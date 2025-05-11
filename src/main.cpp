@@ -410,6 +410,19 @@ int main() {
     compilationProgressBar->setSize({calculate_size_x(controlWidth - 5), calculate_size_y(24)});
     gui.add(compilationProgressBar);
 
+    tgui::Label::Ptr compilationErrorPopUp = tgui::Label::create();
+    sf::Clock tooltipTimer;
+    sf::Time tooltipDisplayDuration = sf::seconds(5);
+    compilationErrorPopUp->getRenderer()->setBackgroundColor(sf::Color(255, 255, 255, 255));
+    compilationErrorPopUp->getRenderer()->setTextColor(sf::Color::Red);
+    compilationErrorPopUp->getRenderer()->setBorders(1);
+    compilationErrorPopUp->getRenderer()->setBorderColor(sf::Color(255, 0, 0, 255));
+    compilationErrorPopUp->setTextSize(calculate_size_x(16));
+    compilationErrorPopUp->setPosition({tgui::bindRight(custom_code) + controlPadding, tgui::bindTop(custom_code)});
+    compilationErrorPopUp->setText("<- Compilation Error!");
+    compilationErrorPopUp->setVisible(false);
+    gui.add(compilationErrorPopUp);
+
     auto parse  = tgui::Button::create("Compile!");
     parse->setPosition({controlGroupXOffsetMandelbrot, tgui::bindBottom(custom_code) + controlPadding});
     parse->setSize({controlWidth, calculate_size_y(24)});
@@ -433,6 +446,7 @@ int main() {
                 window.display();
             }
             if(std::size(error.get()) > 1) {
+                compilationErrorPopUp->setVisible(true);
                 errorText->setText("<size=20><b><color=#ff0000>Compilation Error!</color></size>\n" + error.get());
                 compilationProgressBar->setValue(0);
                 compilationProgressBar->setVisible(false);
@@ -464,6 +478,7 @@ int main() {
                 window.display();
             }
             if(std::size(error.get()) > 1) {
+                compilationErrorPopUp->setVisible(true);
                 errorText->setText("<size=20><b><color=#ff0000>Compilation Error!</color></size>\n" + error.get());
                 compilationProgressBar->setValue(0);
                 compilationProgressBar->setVisible(false);
@@ -498,6 +513,7 @@ int main() {
     errorButton->getRenderer()->setBorders(0);
     errorButton->setPosition({tgui::bindRight(custom_code) - 25, tgui::bindTop(custom_code) + 2});
     errorButton->onPress([&](){
+        if(compilationErrorPopUp->isVisible()) { compilationErrorPopUp->setVisible(false); }
         if(errorText->isVisible()) {
             errorText->setVisible(false);
         } else {
@@ -918,6 +934,10 @@ int main() {
                 oldWindowSize = window.getSize();
             }
         } // End event loop
+
+        if (compilationErrorPopUp->isVisible() && tooltipTimer.getElapsedTime() > tooltipDisplayDuration) {
+            compilationErrorPopUp->setVisible(false);
+        }
 
         sf::Time deltaTime = frameClock.restart();
         frameCountForFPS++;
