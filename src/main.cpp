@@ -147,6 +147,8 @@ int main() {
     bool IsInMandelbrotArea = false;
     bool IsInJuliaArea = false;
 
+    bool updateScreen = true;
+
 
     /// SFML Clocks for timing various application aspects.
     /// renderClock: Measures fractal rendering time (not currently displayed).
@@ -758,6 +760,59 @@ int main() {
     });
     gui.add(UpdateMaxIterationsJulia);
 
+    tgui::RichTextLabel::Ptr helpText = tgui::RichTextLabel::create();
+    helpText->setSize(window.getSize().x, window.getSize().y);
+    helpText->setPosition(0, 0);
+    helpText->getRenderer()->setBackgroundColor({0, 0, 0, 240});
+    helpText->setText("<size=60><color=#00aa00>Controls:</color></size>\n\n"
+                      "<color=#00aa00>Left Mouse Button</color> - Drag Mandelbrot/Julia\n\n"
+                      "<color=#00aa00>Right Mouse Button</color> - Draw Iteration Lines\n\n"
+                      "<color=#00aa00>WASD</color> - Move Mandelbrot\n\n"
+                      "<color=#00aa00>Scroll Wheel</color> - Zoom In/Out\n\n"
+                      "<color=#00aa00>F6</color> - Take Screenshot\n\n"
+                      "<color=#00aa00>B</color> - Block Julia Updates\n\n"
+                      "<color=#00aa00>T</color> - Start/Stop Timelapse\n\n"
+                      "<color=#00aa00>H</color> - Open this menu\n\n"
+                      "<size=40><color=#00aa00>Esc</color> - Close Application</size>\n\n");
+    helpText->setTextSize(calculate_size_x(40));
+    helpText->setVisible(false);
+    helpText->getRenderer()->setTextColor(sf::Color::White);
+    gui.add(helpText);
+
+    tgui::RichTextLabel::Ptr nvrtcFormattingText = tgui::RichTextLabel::create();
+    nvrtcFormattingText->setPosition(0, 0);
+    nvrtcFormattingText->setSize(window.getSize().x, window.getSize().y);
+    nvrtcFormattingText->getRenderer()->setBackgroundColor({0, 0, 0, 0});
+    nvrtcFormattingText->setText("\n<size=40><color=#00aa00>NVRTC Formatting:</color></size>\n"
+                                 "This is a very basic Introduction to NVRTC code writing.\n"
+                                 "1. You should follow basic C++ syntax rules.\n\n"
+                                 "2. You can use the following variables:\n"
+                                 "<color=#00aa00>z_real</color> - Real part of the complex number z - \n"
+                                 "<color=#00aa00>z_imag</color> - Imaginary part of the complex number z - \n"
+                                 " <color=#00aa00>real</color> - Real part of the complex number c - \n"
+                                 "<color=#00aa00>imag</color> - Imaginary part of the complex number c - \n"
+                                 "<color=#00aa00>new_real</color> - Real part of the new complex number z - \n"
+                                 "<color=#00aa00>PI</color> - number PI in float precision - \n"
+                                 "<color=#00aa00>GOLDEN_RATIO</color> - Golden ratio in float precision - \n"
+                                 "<color=#00aa00>z_comp</color> - Current distance from center of complex plane -\n"
+                                 "3. If you want to use hardcoded variables in your code, write them as following:\n\n"
+                                 "T(1.0) - in this case the compiler will use the current precision rendered at.\n"
+                                 "Otherwise may be used unwanted precision with following long renderers or corrupted images\n\n"
+                                 "4. You may use any function you know about, simply type it's name and provide it with required parameters (examples):\n"
+                                 "sin(T(10)), "
+                                 "log(T(20)), "
+                                 "exp(T(42)).\n"
+                                 "If you wanna use faster version of that function (less precision), use the following syntax:\n"
+                                 "__sinf(T(10)), "
+                                 "__logf(T(20)), "
+                                 "so on...\n\n"
+                                 "Thanks for Reading that quick introduction to compiling formulas syntax, have fun!\n");
+    nvrtcFormattingText->setHorizontalAlignment(tgui::HorizontalAlignment::Right);
+    nvrtcFormattingText->setTextSize(calculate_size_x(25));
+    nvrtcFormattingText->getRenderer()->setTextColor(sf::Color::White);
+    nvrtcFormattingText->setVisible(false);
+    gui.add(nvrtcFormattingText);
+
     /// Main application loop.
     /// Processes events, updates state, renders fractals, and draws the frame.
     window.setFramerateLimit(360);
@@ -895,9 +950,26 @@ int main() {
                             needsJuliaRender = true;
                         }
                         break;
+                    case sf::Keyboard::Scancode::H:
+                        if (updateScreen) {
+                            helpText->setVisible(true);
+                            nvrtcFormattingText->setVisible(true);
+                            window.clear();
+                            window.draw(sf::Sprite(renderTarget.getTexture()));
+                            window.draw(mandelbrotHardnessDisplay);
+                            window.draw(juliaHardnessDisplay);
+                            window.draw(fpsDisplay);
+                            gui.draw();
+                            window.display();
+                            updateScreen = false;
+
+                        } else {
+                            helpText->setVisible(false);
+                            nvrtcFormattingText->setVisible(false);
+                            updateScreen = true;
+                        }
+                        break;
                 }
-
-
             }
 
             /// Mouse wheel event handling for zooming.
@@ -974,6 +1046,8 @@ int main() {
                 oldWindowSize = window.getSize();
             }
         }
+
+        if(!updateScreen) continue;
 
         /// Check and hide compilation error tooltip after a delay.
         if (compilationErrorPopUp->isVisible() && tooltipTimer.getElapsedTime() > tooltipDisplayDuration) {
