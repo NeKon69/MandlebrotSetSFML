@@ -44,6 +44,12 @@ FractalBase<Derived>::FractalBase()
     /// of CPU rendering (handled elsewhere, but noted here).
     /// If CUDA is available, it gets device properties to set the
     /// compute capability string for NVRTC compilation.
+    /// Creates a default color palette (HSV).
+    palette = createHSVPalette(BASIC_PALETTE_SIZE);
+    paletteSize = BASIC_PALETTE_SIZE;
+    /// Resizes the iteration points vector, used for drawing iteration paths.
+    iterationpoints.resize(max_iterations);
+
     isCudaAvailable = true;
     int numDevices = 0;
     cudaGetDeviceCount(&numDevices);
@@ -52,6 +58,9 @@ FractalBase<Derived>::FractalBase()
         std::cout << "Forcing to use CPU rendering" << std::endl;
         std::cout << "Please make sure you have CUDA installed and your GPU supports it" << std::endl;
         isCudaAvailable = false;
+        MAKE_CURR_CONTEXT_OPERATION(cudaMallocHost(&h_total_iterations, sizeof(unsigned int)), cuMemHostAlloc((void**)&h_total_iterations, sizeof(unsigned int), 0), context); \
+        MAKE_CURR_CONTEXT_OPERATION(cudaMallocHost(&compressed, basic_width * basic_height * 4 * sizeof(unsigned char)), cuMemHostAlloc((void**)&compressed, basic_width * basic_height * 4 * sizeof(unsigned char), 0), context);
+        MAKE_CURR_CONTEXT_OPERATION(cudaMallocHost(&pixels, basic_width * 2 * basic_height * 2 * 4 * sizeof(unsigned char)), cuMemHostAlloc((void**)&pixels, sizeof(unsigned char) * basic_width * 2 * basic_height * 2 * 4, 0), context);
     }
     else {
         cudaDeviceProp deviceProp;
@@ -62,18 +71,6 @@ FractalBase<Derived>::FractalBase()
         /// Allocates necessary memory on both host and device (GPU) for non-image data (e.g., iteration counts).
         ALLOCATE_ALL_NON_IMAGE_MEMORY();
     }
-    /// Creates a default color palette (HSV).
-    palette = createHSVPalette(BASIC_PALETTE_SIZE);
-    paletteSize = BASIC_PALETTE_SIZE;
-    if(numDevices == 0) {
-        MAKE_CURR_CONTEXT_OPERATION(cudaMallocHost(&h_total_iterations, sizeof(unsigned int)), cuMemHostAlloc((void**)&h_total_iterations, sizeof(unsigned int), 0), context); \
-        MAKE_CURR_CONTEXT_OPERATION(cudaMallocHost(&compressed, basic_width * basic_height * 4 * sizeof(unsigned char)), cuMemHostAlloc((void**)&compressed, basic_width * basic_height * 4 * sizeof(unsigned char), 0), context);
-        MAKE_CURR_CONTEXT_OPERATION(cudaMallocHost(&pixels, basic_width * 2 * basic_height * 2 * 4 * sizeof(unsigned char)), cuMemHostAlloc((void**)&pixels, sizeof(unsigned char) * basic_width * 2 * basic_height * 2 * 4, 0), context);      \
-    }
-
-    /// Resizes the iteration points vector, used for drawing iteration paths.
-    iterationpoints.resize(max_iterations);
-
 }
 
 /// Destructor for the FractalBase class.
