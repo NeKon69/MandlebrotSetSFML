@@ -101,7 +101,7 @@ int main() {
     /// Font loading and SFML Text objects for displaying information
     /// like FPS and fractal "hardness" (a measure of computational cost).
     sf::Font mainFont;
-    if (!mainFont.openFromFile("fonts/LiberationMono-Bold.ttf")) {
+    if (!mainFont.openFromFile(R"(fonts/LiberationMono-Bold.ttf)")) {
         std::cerr << "Error loading font!" << std::endl;
         return -1;
     }
@@ -526,8 +526,8 @@ int main() {
     gui.add(parse);
 
     /// Button to toggle compilation error text area.
-    sf::Image icon({10, 10});
-    if(!icon.loadFromFile("Images/Info.png")) std::cerr << "Error loading icon!" << std::endl;
+    sf::Image icon({10, 10}, sf::Color::Black);
+    if(!icon.loadFromFile(R"(Images/Info.png)")) std::cerr << "Error loading icon!" << std::endl;
     tgui::BitmapButton::Ptr errorButton = tgui::BitmapButton::create();
     errorButton->setImage(sf::Texture(icon));
     errorButton->setSize({18, 18});
@@ -916,7 +916,7 @@ int main() {
                     case sf::Keyboard::Scancode::F6:
                     {
                         sf::Texture texture;
-                        texture = sf::Texture({mandelbrotFractal.getTexture().getSize().x, mandelbrotFractal.getTexture().getSize().y});
+                        texture = sf::Texture({mandelbrotFractal.getTexture().getSize().x, mandelbrotFractal.getTexture().getSize().y}, true);
                         if (true) {
                             texture.update(mandelbrotFractal.getTexture());
                             sf::Image screenshot = texture.copyToImage();
