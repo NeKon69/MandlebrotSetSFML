@@ -14,9 +14,9 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    add_compile_options(-Wall -Wextra -pedantic -fPIE)
-endif()
+#if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+#    add_compile_options(-Wall -Wextra -pedantic -fPIE)
+#endif()
 
 # Source files (Keep these)
 set(CPP_SOURCES
@@ -91,22 +91,22 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 )
 
 target_compile_options(${PROJECT_NAME} PRIVATE
-        # --- Keep existing GCC/Clang flags ---
-        $<$<AND:$<CXX_COMPILER_ID:GNU>,$<CONFIG:Release>>:-O3>
-        $<$<AND:$<CXX_COMPILER_ID:Clang>,$<CONFIG:Release>>:-O3>
-        $<$<AND:$<CXX_COMPILER_ID:GNU>,$<CONFIG:Release>>:-ffast-math>
-        $<$<AND:$<CXX_COMPILER_ID:Clang>,$<CONFIG:Release>>:-ffast-math>
-        $<$<AND:$<CXX_COMPILER_ID:GNU>,$<CONFIG:Release>>:-march=native>
-        $<$<AND:$<CXX_COMPILER_ID:Clang>,$<CONFIG:Release>>:-march=native>
-
-        # --- MSVC C++ specific flags ---
-        $<$<CXX_COMPILER_ID:MSVC>:/W3>
-        $<$<CXX_COMPILER_ID:MSVC>:/MP>
-        $<$<CXX_COMPILER_ID:MSVC>:/EHsc>
-        $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Release>>:/Ox>
-        $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Release>>:/fp:fast>
-
-        # --- CUDA Compiler Flags (Specific to nvcc) ---
-        $<$<AND:$<CUDA_COMPILER_ID:NVIDIA>,$<CONFIG:Release>>:-O3>
-        $<$<AND:$<CUDA_COMPILER_ID:NVIDIA>,$<CONFIG:Release>>:-use_fast_math>
+#        # --- Keep existing GCC/Clang flags ---
+#        $<$<AND:$<CXX_COMPILER_ID:GNU>,$<CONFIG:Release>>:-O3>
+#        $<$<AND:$<CXX_COMPILER_ID:Clang>,$<CONFIG:Release>>:-O3>
+#        $<$<AND:$<CXX_COMPILER_ID:GNU>,$<CONFIG:Release>>:-ffast-math>
+#        $<$<AND:$<CXX_COMPILER_ID:Clang>,$<CONFIG:Release>>:-ffast-math>
+#        $<$<AND:$<CXX_COMPILER_ID:GNU>,$<CONFIG:Release>>:-march=native>
+#        $<$<AND:$<CXX_COMPILER_ID:Clang>,$<CONFIG:Release>>:-march=native>
+#
+#        # --- MSVC C++ specific flags ---
+#        $<$<CXX_COMPILER_ID:MSVC>:/W3>
+#        $<$<CXX_COMPILER_ID:MSVC>:/MP>
+#        $<$<CXX_COMPILER_ID:MSVC>:/EHsc>
+#        $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Release>>:/Ox>
+#        $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Release>>:/fp:fast>
+#
+#        # --- CUDA Compiler Flags (Specific to nvcc) ---
+#        $<$<AND:$<CUDA_COMPILER_ID:NVIDIA>,$<CONFIG:Release>>:-O3>
+#        $<$<AND:$<CUDA_COMPILER_ID:NVIDIA>,$<CONFIG:Release>>:-use_fast_math>
 )

@@ -527,7 +527,7 @@ int main() {
 
     /// Button to toggle compilation error text area.
     sf::Image icon({10, 10});
-    icon.loadFromFile("Images/Info.png");
+    if(!icon.loadFromFile("Images/Info.png")) std::cerr << "Error loading icon!" << std::endl;
     tgui::BitmapButton::Ptr errorButton = tgui::BitmapButton::create();
     errorButton->setImage(sf::Texture(icon));
     errorButton->setSize({18, 18});
