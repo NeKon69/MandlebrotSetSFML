@@ -1,3 +1,4 @@
+#pragma once
 #include "julia.cuh"
 
 /// CUDA kernel function to calculate and render the Julia set.

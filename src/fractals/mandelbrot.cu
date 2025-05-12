@@ -1,3 +1,4 @@
+#pragma once
 #include "mandelbrot.cuh"
 
 /// CUDA kernel function to calculate and render the Mandelbrot set.
