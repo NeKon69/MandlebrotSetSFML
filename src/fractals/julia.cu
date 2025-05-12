@@ -141,13 +141,13 @@ __global__ void fractal_rendering(
 
 /// Explicit template instantiations for float and double precision.
 template __global__ void fractal_rendering<float>(
-        unsigned char*, unsigned long, unsigned int, unsigned int,
+        unsigned char*, size_t, unsigned int, unsigned int,
         float, float, float, float,
         Color*, int, float, unsigned int*,
         float, float);
 
 template __global__ void fractal_rendering<double>(
-        unsigned char*, unsigned long, unsigned int, unsigned int,
+        unsigned char*, size_t, unsigned int, unsigned int,
         double, double, double, double,
         Color*, int, double, unsigned int*,
         double, double);
