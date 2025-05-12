@@ -58,9 +58,9 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
             this->progress_compiling_percentage = 20;
 
             /// Read the content of the custom kernel header file.
-            const std::ifstream header_file("../include/fractals/custom.cuh");
+            const std::ifstream header_file("custom.cuh");
             if (!header_file.is_open()) {
-                log_buffer = "Error: Could not open header file: ../include/fractals/custom.cuh\n";
+                log_buffer = "Error: Could not open header file: custom.cuh\n";
                 throw std::runtime_error(log_buffer);
             }
             std::stringstream buffer;
@@ -120,6 +120,8 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
                 std::cerr << log_buffer << std::endl;
                 std::cerr << "---------------------\n\n";
                 log_buffer = "Compilation FAILED:\n" + log_buffer;
+                // Means it's first time compilation, and we can switch back to CUDA
+                if(!module_loaded) set_context(context_type::CUDA);
                 throw std::runtime_error("NVRTC Compilation Failed");
             } else {
                 std::cout << "NVRTC Compilation Succeeded for " << fractal_name_str << ".\n";
@@ -179,11 +181,6 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
 
             /// Unload any previously loaded NVRTC module and reset function pointers.
             if (this->module_loaded && this->module) { CU_SAFE_CALL(cuModuleUnload(this->module)); }
-            this->module = nullptr;
-            this->module_loaded = false;
-            this->kernelFloat = nullptr;
-            this->kernelDouble = nullptr;
-            this->kernelAntialiasing = nullptr;
 
             this->progress_compiling_percentage = 90;
 
@@ -232,23 +229,6 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
                 prog = nullptr;
             }
 
-            /// Clean up module and kernel pointers on error.
-            if (this->module_loaded && this->module) {
-                CUresult unload_res = cuModuleUnload(this->module);
-                if (unload_res != CUDA_SUCCESS) {
-                    std::cerr << "Error during module unload in error handler: " << unload_res << std::endl;
-                }
-            }
-            this->module = nullptr;
-            this->module_loaded = false;
-            this->kernelFloat = nullptr;
-            this->kernelDouble = nullptr;
-            this->kernelAntialiasing = nullptr;
-            lowered_kernel_name_float_str.clear();
-            lowered_kernel_name_double_str.clear();
-            lowered_kernel_name_ssaa_str.clear();
-            this->custom_formula = false; // Revert custom formula flag
-
             this->progress_compiling_percentage = -1; // Indicate error in progress
 
             promise.set_value(log_buffer); // Set the future with the error log
@@ -261,22 +241,6 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
                 NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog));
                 prog = nullptr;
             }
-            if (this->module_loaded && this->module) {
-                CUresult unload_res = cuModuleUnload(this->module);
-                if (unload_res != CUDA_SUCCESS) {
-                    std::cerr << "Error during module unload in unknown error handler: " << unload_res << std::endl;
-                }
-            }
-            this->module = nullptr;
-            this->module_loaded = false;
-            this->kernelFloat = nullptr;
-            this->kernelDouble = nullptr;
-            this->kernelAntialiasing = nullptr;
-            lowered_kernel_name_float_str.clear();
-            lowered_kernel_name_double_str.clear();
-            lowered_kernel_name_ssaa_str.clear();
-            this->custom_formula = false;
-
             this->progress_compiling_percentage = -1;
 
             promise.set_value(log_buffer);
@@ -293,7 +257,6 @@ std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const s
 template <typename Derived>
 void FractalBase<Derived>::set_context(context_type contx) {
     if(contx == context) return; // No change if the context is already the same
-    std::cout << "Switching context of fractal(" << (std::is_same<Derived, fractals::julia>::value? "Julia" : "Mandelbrot") << ")from " << (context == context_type::CUDA ? "CUDA" : "NVRTC") << " to " << (contx == context_type::CUDA ? "CUDA" : "NVRTC") << std::endl;
 
     FREE_ALL_IMAGE_MEMORY();
     FREE_ALL_NON_IMAGE_MEMORY();

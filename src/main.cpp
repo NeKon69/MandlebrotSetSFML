@@ -459,7 +459,6 @@ int main() {
             std::this_thread::sleep_for(std::chrono::microseconds(10));
             while(mandelbrotFractal.get_is_compiling()) {
                 compilationProgressBar->setValue(mandelbrotFractal.get_compiling_percentage() / 2.0);
-                std::cout << mandelbrotFractal.get_compiling_percentage() << std::endl;
                 window.clear();
                 window.draw(sf::Sprite(renderTarget.getTexture()));
                 window.draw(mandelbrotHardnessDisplay);
@@ -492,7 +491,6 @@ int main() {
             std::this_thread::sleep_for(std::chrono::microseconds(10));
             while(juliaFractal.get_is_compiling()) {
                 compilationProgressBar->setValue(50 + juliaFractal.get_compiling_percentage() / 2.0);
-                std::cout << juliaFractal.get_compiling_percentage() << std::endl;
                 window.clear();
                 window.draw(sf::Sprite(renderTarget.getTexture()));
                 window.draw(mandelbrotHardnessDisplay);
@@ -806,7 +804,7 @@ int main() {
                                  "__sinf(T(10)), "
                                  "__logf(T(20)), "
                                  "so on...\n\n"
-                                 "Thanks for Reading that quick introduction to compiling formulas syntax, have fun!\n");
+                                 "Thanks for Reading that quick introduction to compiling formulas syntax, for any more details read FORMULA_WRITING_SYNTAX in project files, have fun!\n");
     nvrtcFormattingText->setHorizontalAlignment(tgui::HorizontalAlignment::Right);
     nvrtcFormattingText->setTextSize(calculate_size_x(25));
     nvrtcFormattingText->getRenderer()->setTextColor(sf::Color::White);
@@ -905,10 +903,8 @@ int main() {
                         isTimelapseActive = !isTimelapseActive;
                         if(isTimelapseActive) {
                             juliaFractal.start_timelapse();
-                            std::cout << "Timelapse started." << std::endl;
                         } else {
                             juliaFractal.stop_timelapse();
-                            std::cout << "Timelapse stopped." << std::endl;
                             needsJuliaRender = true;
                             currentJuliaQuality = RenderQuality::best;
                         }

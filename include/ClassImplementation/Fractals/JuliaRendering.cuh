@@ -89,10 +89,8 @@ void FractalBase<fractals::julia>::render(
                 if (all_done) break;
                 post_processing();
                 std::this_thread::sleep_for(THREAD_SLEEP_TIME);
-                std::cout << "Total iterations: " << *h_total_iterations << "\n";
             }
             post_processing();
-            std::cout << "Total iterations (Final): " << *h_total_iterations << "\n";
         });
         main_thread.detach();
         return;

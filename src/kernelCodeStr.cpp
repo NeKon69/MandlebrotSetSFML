@@ -6,7 +6,7 @@
 
 std::string beginning_mandelbrot = R"(
 
-#include "../include/fractals/custom.cuh"
+#include "custom.cuh"
 template <typename T>
 __global__ void fractal_rendering_mandelbrot(
         unsigned char* pixels, unsigned long size_of_pixels, unsigned int width, unsigned int height,
@@ -40,7 +40,7 @@ __global__ void fractal_rendering_mandelbrot(
 
 std::string beginning_julia = R"(
 
-#include "../include/fractals/custom.cuh"
+#include "custom.cuh"
 template<typename T>
 __global__ void fractal_rendering_julia(
         unsigned char* pixels, unsigned long size_of_pixels, unsigned int width, unsigned int height,

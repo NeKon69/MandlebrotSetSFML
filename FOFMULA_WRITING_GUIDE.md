@@ -6,7 +6,7 @@ You don't need to know CUDA programming or kernel details. You just need to unde
 
 ## How to Use Custom Formulas
 
-You will find a specific input area (likely a text box) within the application where you can type your custom formula code.
+You will find a specific input area within the application where you can type your custom formula code.
 
 Your code snippet represents the core **iteration step** for a single point in the complex plane. This code will be executed repeatedly for each pixel, up to the maximum number of iterations you've set.
 
@@ -43,8 +43,8 @@ Your code should contain C++-like assignment statements that update the `new_rea
 
 The standard Mandelbrot set is defined by the iteration `z = z^2 + c`. In terms of real and imaginary parts (`z = z_real + i * z_imag`, `c = real + i * imag`), this expands to:
 
-$(z_{real} + i z_{imag})^2 + (real + i imag)$
-$= (z_{real}^2 - z_{imag}^2 + 2 i z_{real} z_{imag}) + (real + i imag)$
+$(z_{real} + i * z_{imag})^2 + (real + i * imag)$
+$= (z_{real}^2 - z_{imag}^2 + 2 * i * z_{real} z_{imag}) + (real + i * imag)$
 $= (z_{real}^2 - z_{imag}^2 + real) + i (2 z_{real} z_{imag} + imag)$
 
 So, the next real part is $(z_{real}^2 - z_{imag}^2 + real)$ and the next imaginary part is $(2 z_{real} z_{imag} + imag)$.
@@ -63,7 +63,7 @@ z_imag = 2 * z_real * z_imag + imag;
 
 **Another Example: Burning Ship Fractal**
 
-The Burning Ship fractal uses the iteration `z = (|real(z)| + i |imag(z)|)^2 + c`.
+The Burning Ship fractal uses the iteration `z = (|real(z)| + i * |imag(z)|)^2 + c`.
 
 **Burning Ship Example:**
 
