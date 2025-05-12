@@ -58,9 +58,9 @@ FractalBase<Derived>::FractalBase()
         std::cout << "Forcing to use CPU rendering" << std::endl;
         std::cout << "Please make sure you have CUDA installed and your GPU supports it" << std::endl;
         isCudaAvailable = false;
-        MAKE_CURR_CONTEXT_OPERATION(cudaMallocHost(&h_total_iterations, sizeof(unsigned int)), cuMemHostAlloc((void**)&h_total_iterations, sizeof(unsigned int), 0), context); \
-        MAKE_CURR_CONTEXT_OPERATION(cudaMallocHost(&compressed, basic_width * basic_height * 4 * sizeof(unsigned char)), cuMemHostAlloc((void**)&compressed, basic_width * basic_height * 4 * sizeof(unsigned char), 0), context);
-        MAKE_CURR_CONTEXT_OPERATION(cudaMallocHost(&pixels, basic_width * 2 * basic_height * 2 * 4 * sizeof(unsigned char)), cuMemHostAlloc((void**)&pixels, sizeof(unsigned char) * basic_width * 2 * basic_height * 2 * 4, 0), context);
+        h_total_iterations = static_cast<unsigned int *>(malloc(sizeof(unsigned int)));
+        compressed = static_cast<unsigned char *>(malloc(basic_width * basic_height * 4 * sizeof(unsigned char)));
+        pixels = static_cast<unsigned char *>(malloc(basic_width * 2 * basic_height * 2 * 4 * sizeof(unsigned char)));
     }
     else {
         cudaDeviceProp deviceProp;
@@ -78,10 +78,9 @@ FractalBase<Derived>::FractalBase()
 template <typename Derived>
 FractalBase<Derived>::~FractalBase() {
     if(!isCudaAvailable) {
-        cudaFreeHost(&pixels);
-        cudaFreeHost(&compressed);
-        cudaFreeHost(&h_total_iterations);
-
+        free(compressed);
+        free(pixels);
+        free(h_total_iterations);
     }
     else {
         /// Frees all allocated memory on both host and device (GPU).

@@ -82,6 +82,7 @@ void FractalBase<Derived>::setPallete(std::string name) {
 
         if (creation_successful) {
             paletteSize = palette_size;
+            if(isCudaAvailable)
             COPY_PALETTE_TO_DEVICE(palette.data(), d_palette, cu_palette, context);
             curr_pallete = target_palette_enum;
         }
