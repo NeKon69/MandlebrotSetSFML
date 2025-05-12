@@ -90,7 +90,6 @@ target_compile_options(${PROJECT_NAME} PRIVATE
 target_compile_options(${PROJECT_NAME} PRIVATE
         $<$<COMPILE_LANGUAGE:CUDA>:
         $<$<CONFIG:Release>:-O3>
-        -use-fast-math
         $<$<CXX_COMPILER_ID:MSVC>:
         -Xcompiler="/W3,/EHsc"
         $<$<CONFIG:Release>:-Xcompiler="/O2,/MP">
