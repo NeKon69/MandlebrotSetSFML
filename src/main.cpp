@@ -916,7 +916,7 @@ int main() {
                     case sf::Keyboard::Scancode::F6:
                     {
                         sf::Texture texture;
-                        texture = sf::Texture({mandelbrotFractal.getTexture().getSize().x, mandelbrotFractal.getTexture().getSize().y}, true);
+                        texture = sf::Texture(sf::Vector2u(mandelbrotFractal.getTexture().getSize().x, mandelbrotFractal.getTexture().getSize().y), true);
                         if (true) {
                             texture.update(mandelbrotFractal.getTexture());
                             sf::Image screenshot = texture.copyToImage();
