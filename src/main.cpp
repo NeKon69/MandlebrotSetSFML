@@ -108,7 +108,6 @@ int main() {
     sf::Text fpsDisplay(mainFont);
     fpsDisplay.setPosition({ 10, 10 });
     fpsDisplay.setString("FPS: 0");
-    fpsDisplay.setFillColor(sf::Color::Black);
     sf::Text mandelbrotHardnessDisplay(mainFont);
     mandelbrotHardnessDisplay.setPosition({ 10, 40 });
     mandelbrotHardnessDisplay.setString("M-Hardness: 0.0");
@@ -810,6 +809,10 @@ int main() {
     nvrtcFormattingText->getRenderer()->setTextColor(sf::Color::White);
     nvrtcFormattingText->setVisible(false);
     gui.add(nvrtcFormattingText);
+
+
+    mandelbrotFractal.set_resolution({int(windowSize.size.x / 2), int(windowSize.size.y)});
+    juliaFractal.set_resolution({int(windowSize.size.x / 2), int(windowSize.size.y)});
 
     /// Main application loop.
     /// Processes events, updates state, renders fractals, and draws the frame.
