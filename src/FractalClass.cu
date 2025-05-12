@@ -165,8 +165,14 @@ void FractalBase<Derived>::set_resolution(sf::Vector2i target_resolution) {
     x_offset = center_x - (width / (zoom_x * zoom_scale)) / 2.0;
     y_offset = center_y - (height / (zoom_y * zoom_scale)) / 2.0;
 
-    FREE_ALL_IMAGE_MEMORY();
-    ALLOCATE_ALL_IMAGE_MEMORY();
+    if(!isCudaAvailable){
+        free(pixels);
+        pixels = static_cast<unsigned char *>(malloc(basic_width * 2 * basic_height * 2 * 4 * sizeof(unsigned char)));
+    }
+    else {
+        FREE_ALL_IMAGE_MEMORY();
+        FREE_ALL_NON_IMAGE_MEMORY();
+    }
 }
 
 
