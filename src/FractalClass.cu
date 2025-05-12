@@ -57,15 +57,19 @@ FractalBase<Derived>::FractalBase()
         cudaDeviceProp deviceProp;
         cudaGetDeviceProperties(&deviceProp, 0);
         compute_capability = "--gpu-architecture=compute_" + std::to_string(deviceProp.major) + std::to_string(deviceProp.minor);
+        /// Allocates necessary memory on both host and device (GPU) for image data.
+        ALLOCATE_ALL_IMAGE_MEMORY();
+        /// Allocates necessary memory on both host and device (GPU) for non-image data (e.g., iteration counts).
+        ALLOCATE_ALL_NON_IMAGE_MEMORY();
     }
     /// Creates a default color palette (HSV).
     palette = createHSVPalette(BASIC_PALETTE_SIZE);
     paletteSize = BASIC_PALETTE_SIZE;
-
-    /// Allocates necessary memory on both host and device (GPU) for image data.
-    ALLOCATE_ALL_IMAGE_MEMORY();
-    /// Allocates necessary memory on both host and device (GPU) for non-image data (e.g., iteration counts).
-    ALLOCATE_ALL_NON_IMAGE_MEMORY();
+    if(numDevices == 0) {
+        MAKE_CURR_CONTEXT_OPERATION(cudaMallocHost(&h_total_iterations, sizeof(unsigned int)), cuMemHostAlloc((void**)&h_total_iterations, sizeof(unsigned int), 0), context); \
+        MAKE_CURR_CONTEXT_OPERATION(cudaMallocHost(&compressed, basic_width * basic_height * 4 * sizeof(unsigned char)), cuMemHostAlloc((void**)&compressed, basic_width * basic_height * 4 * sizeof(unsigned char), 0), context);
+        MAKE_CURR_CONTEXT_OPERATION(cudaMallocHost(&pixels, basic_width * 2 * basic_height * 2 * 4 * sizeof(unsigned char)), cuMemHostAlloc((void**)&pixels, sizeof(unsigned char) * basic_width * 2 * basic_height * 2 * 4, 0), context);      \
+    }
 
     /// Resizes the iteration points vector, used for drawing iteration paths.
     iterationpoints.resize(max_iterations);
@@ -76,14 +80,22 @@ FractalBase<Derived>::FractalBase()
 /// Ensures proper cleanup of GPU resources and allocated memory.
 template <typename Derived>
 FractalBase<Derived>::~FractalBase() {
-    /// Frees all allocated memory on both host and device (GPU).
-    FREE_ALL_IMAGE_MEMORY();
-    FREE_ALL_NON_IMAGE_MEMORY();
-    /// Unloads the NVRTC module if it was loaded.
-    if (module_loaded) CU_SAFE_CALL(cuModuleUnload(module));
-    /// Destroys the CUDA context if it was created, using a macro
-    /// to handle context switching if necessary.
-    MAKE_CURR_CONTEXT_OPERATION(cudaFree(nullptr), cuCtxDestroy(ctx), context);
+    if(!isCudaAvailable) {
+        cudaFreeHost(&pixels);
+        cudaFreeHost(&compressed);
+        cudaFreeHost(&h_total_iterations);
+
+    }
+    else {
+        /// Frees all allocated memory on both host and device (GPU).
+        FREE_ALL_IMAGE_MEMORY();
+        FREE_ALL_NON_IMAGE_MEMORY();
+        /// Unloads the NVRTC module if it was loaded.
+        if (module_loaded) CU_SAFE_CALL(cuModuleUnload(module));
+        /// Destroys the CUDA context if it was created, using a macro
+        /// to handle context switching if necessary.
+        MAKE_CURR_CONTEXT_OPERATION(cudaFree(nullptr), cuCtxDestroy(ctx), context);
+    }
 }
 
 template <typename Derived>
