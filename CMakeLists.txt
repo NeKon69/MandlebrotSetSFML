@@ -16,8 +16,6 @@ endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(-Wall -Wextra -pedantic -fPIE)
-elseif(MSVC)
-    add_compile_options(/W3 /MP)
 endif()
 
 # Source files (Keep these)
@@ -93,6 +91,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 )
 
 target_compile_options(${PROJECT_NAME} PRIVATE
+        # --- Keep existing GCC/Clang flags ---
         $<$<AND:$<CXX_COMPILER_ID:GNU>,$<CONFIG:Release>>:-O3>
         $<$<AND:$<CXX_COMPILER_ID:Clang>,$<CONFIG:Release>>:-O3>
         $<$<AND:$<CXX_COMPILER_ID:GNU>,$<CONFIG:Release>>:-ffast-math>
@@ -100,11 +99,14 @@ target_compile_options(${PROJECT_NAME} PRIVATE
         $<$<AND:$<CXX_COMPILER_ID:GNU>,$<CONFIG:Release>>:-march=native>
         $<$<AND:$<CXX_COMPILER_ID:Clang>,$<CONFIG:Release>>:-march=native>
 
-        # MSVC flags
+        # --- MSVC C++ specific flags ---
+        $<$<CXX_COMPILER_ID:MSVC>:/W3>
+        $<$<CXX_COMPILER_ID:MSVC>:/MP>
+        $<$<CXX_COMPILER_ID:MSVC>:/EHsc>
         $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Release>>:/Ox>
         $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Release>>:/fp:fast>
 
-        # CUDA Compiler Flags
+        # --- CUDA Compiler Flags (Specific to nvcc) ---
         $<$<AND:$<CUDA_COMPILER_ID:NVIDIA>,$<CONFIG:Release>>:-O3>
         $<$<AND:$<CUDA_COMPILER_ID:NVIDIA>,$<CONFIG:Release>>:-use_fast_math>
 )
