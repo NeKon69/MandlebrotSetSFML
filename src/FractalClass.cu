@@ -19,7 +19,7 @@ template <typename Derived>
 FractalBase<Derived>::FractalBase()
         :
         /// Initializes flags for potential thread management
-        thread_stop_flags(std::thread::hardware_concurrency() * 100),
+        thread_stop_flags(std::thread::hardware_concurrency()),
         /// Initializes basic and current fractal parameters like iterations, zoom, offset, and speed.
         max_iterations(MAX_ITERATIONS), basic_zoom_x(BASIC_ZOOM_X), basic_zoom_y(BASIC_ZOOM_Y),
         zoom_x(basic_zoom_x), zoom_y(basic_zoom_y),
@@ -39,6 +39,13 @@ FractalBase<Derived>::FractalBase()
     initialized_nvrtc = false;
     created_context = false;
 
+    /// Resizes the iteration points vector, used for drawing iteration paths.
+    iterationpoints.resize(max_iterations);
+
+    /// Creates a default color palette (HSV).
+    palette = createHSVPalette(BASIC_PALETTE_SIZE);
+    paletteSize = BASIC_PALETTE_SIZE;
+
     /// Checks for CUDA device availability. If no device is found,
     /// it sets a flag indicating CUDA is not available, forcing the use
     /// of CPU rendering (handled elsewhere, but noted here).
@@ -52,38 +59,51 @@ FractalBase<Derived>::FractalBase()
         std::cout << "Forcing to use CPU rendering" << std::endl;
         std::cout << "Please make sure you have CUDA installed and your GPU supports it" << std::endl;
         isCudaAvailable = false;
+        pixels = static_cast<unsigned char*>(malloc(basic_width * 2 * basic_height * 2 * 4 * sizeof(unsigned char)));
+        compressed = static_cast<unsigned char*>(malloc(basic_width * basic_height * 4 * sizeof(unsigned char)));
+        h_total_iterations = static_cast<unsigned int*>(malloc(sizeof(unsigned int)));
     }
     else {
         cudaDeviceProp deviceProp;
         cudaGetDeviceProperties(&deviceProp, 0);
         compute_capability = "--gpu-architecture=compute_" + std::to_string(deviceProp.major) + std::to_string(deviceProp.minor);
+        /// Allocates necessary memory on both host and device (GPU) for image data.
+        ALLOCATE_ALL_IMAGE_MEMORY();
+        /// Allocates necessary memory on both host and device (GPU) for non-image data (e.g., iteration counts).
+        ALLOCATE_ALL_NON_IMAGE_MEMORY();
     }
-    /// Creates a default color palette (HSV).
-    palette = createHSVPalette(BASIC_PALETTE_SIZE);
-    paletteSize = BASIC_PALETTE_SIZE;
-
-    /// Allocates necessary memory on both host and device (GPU) for image data.
-    ALLOCATE_ALL_IMAGE_MEMORY();
-    /// Allocates necessary memory on both host and device (GPU) for non-image data (e.g., iteration counts).
-    ALLOCATE_ALL_NON_IMAGE_MEMORY();
-
-    /// Resizes the iteration points vector, used for drawing iteration paths.
-    iterationpoints.resize(max_iterations);
-
 }
 
 /// Destructor for the FractalBase class.
 /// Ensures proper cleanup of GPU resources and allocated memory.
 template <typename Derived>
 FractalBase<Derived>::~FractalBase() {
-    /// Frees all allocated memory on both host and device (GPU).
-    FREE_ALL_IMAGE_MEMORY();
-    FREE_ALL_NON_IMAGE_MEMORY();
-    /// Unloads the NVRTC module if it was loaded.
-    if (module_loaded) CU_SAFE_CALL(cuModuleUnload(module));
-    /// Destroys the CUDA context if it was created, using a macro
-    /// to handle context switching if necessary.
-    MAKE_CURR_CONTEXT_OPERATION(cudaFree(nullptr), cuCtxDestroy(ctx), context);
+    if(isCudaAvailable) {
+        /// Frees all allocated memory on both host and device (GPU).
+        FREE_ALL_IMAGE_MEMORY();
+        FREE_ALL_NON_IMAGE_MEMORY();
+        /// Unloads the NVRTC module if it was loaded.
+        if (module_loaded) CU_SAFE_CALL(cuModuleUnload(module));
+        /// Destroys the CUDA context if it was created, using a macro
+        /// to handle context switching if necessary.
+        MAKE_CURR_CONTEXT_OPERATION(cudaFree(nullptr), cuCtxDestroy(ctx), context);
+    }
+    else {
+        try {
+            for(int i = 0; i < std::size(thread_stop_flags); ++i) {
+                if(thread_stop_flags[i].load() != 1) thread_stop_flags[i].store(2);
+            }
+            while(!std::all_of(thread_stop_flags.begin(), thread_stop_flags.end(), [](std::atomic<unsigned char>& thread){ return thread.load() == 1; })) {
+                std::this_thread::sleep_for(std::chrono::microseconds(100));
+            }
+            free(pixels);
+            free(compressed);
+            free(h_total_iterations);
+        }
+        catch(std::exception& e) {
+            std::cout << "Destructor Failed: " << e.what() << "\n";
+        }
+    }
 }
 
 template <typename Derived>
@@ -156,9 +176,17 @@ void FractalBase<Derived>::set_resolution(sf::Vector2i target_resolution) {
 
     x_offset = center_x - (width / (zoom_x * zoom_scale)) / 2.0;
     y_offset = center_y - (height / (zoom_y * zoom_scale)) / 2.0;
-
-    FREE_ALL_IMAGE_MEMORY();
-    ALLOCATE_ALL_IMAGE_MEMORY();
+    if(!texture.resize({basic_width, basic_height}, true)) throw std::runtime_error("Error in Resizing!");
+    if(isCudaAvailable) {
+        FREE_ALL_IMAGE_MEMORY();
+        ALLOCATE_ALL_IMAGE_MEMORY();
+    }
+    else {
+        free(pixels);
+        free(compressed);
+        pixels = static_cast<unsigned char*>(malloc(basic_width * 2 * basic_height * 2 * 4 * sizeof(unsigned char)));
+        compressed = static_cast<unsigned char*>(malloc(basic_width * basic_height * 4 * sizeof(unsigned char)));
+    }
 }
 
 
@@ -168,10 +196,20 @@ void FractalBase<Derived>::set_resolution(sf::Vector2i target_resolution) {
 template <typename Derived>
 void FractalBase<Derived>::reset() {
     // Free existing resources
-    FREE_ALL_IMAGE_MEMORY();
-    FREE_ALL_NON_IMAGE_MEMORY();
+    if(isCudaAvailable) {
+        FREE_ALL_IMAGE_MEMORY();
+        FREE_ALL_NON_IMAGE_MEMORY();
+    }
+    else {
+        free(pixels);
+        free(compressed);
+        free(h_total_iterations);
+    }
+
 
     INIT_BASIC_VALUES;
+
+    if(!texture.resize({basic_width, basic_height}, true)) throw std::runtime_error("Error in Resizing!");
 
     if (std::is_same<Derived, fractals::julia>::value) {
         x_offset = 2.5;
@@ -183,9 +221,17 @@ void FractalBase<Derived>::reset() {
         paletteSize = BASIC_PALETTE_SIZE;
     }
 
-    if(context == context_type::NVRTC) cuCtxSetCurrent(ctx);
-    ALLOCATE_ALL_IMAGE_MEMORY();
-    ALLOCATE_ALL_NON_IMAGE_MEMORY();
+    if(isCudaAvailable) {
+        if(context == context_type::NVRTC) cuCtxSetCurrent(ctx);
+        ALLOCATE_ALL_IMAGE_MEMORY();
+        ALLOCATE_ALL_NON_IMAGE_MEMORY();
+    }
+    else {
+        pixels = static_cast<unsigned char*>(malloc(basic_width * 2 * basic_height * 2 * 4 * sizeof(unsigned char)));
+        compressed = static_cast<unsigned char*>(malloc(basic_width * basic_height * 4 * sizeof(unsigned char)));
+        h_total_iterations = static_cast<unsigned int*>(malloc(sizeof(unsigned int)));
+    }
+
 
     iterationpoints.resize(max_iterations);
 }

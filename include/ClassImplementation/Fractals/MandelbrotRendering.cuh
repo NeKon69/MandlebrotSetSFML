@@ -92,6 +92,7 @@ void FractalBase<fractals::mandelbrot>::render(render_state quality) {
                 std::this_thread::sleep_for(THREAD_SLEEP_TIME);
             }
             post_processing(); // Final update.
+            std::cout << "Finished thread (Mandelbrot)!\n";
         });
         main_thread.detach(); // Detach the main CPU rendering management thread.
         return;

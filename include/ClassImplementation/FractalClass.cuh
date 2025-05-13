@@ -252,6 +252,7 @@ public:
     double get_hardness_coeff();
     unsigned int get_compiling_percentage();
     bool get_is_compiling() {return is_compiling;}
+    bool get_isCudaAvailable() {return isCudaAvailable;}
 
     void setMaxComputation(float Gflops, float GDflops);
 

@@ -61,6 +61,7 @@ void FractalBase<Derived>::post_processing() {
         hardness_coeff = *h_total_iterations / (width * height * 1.0);
         image.resize({ basic_width, basic_height }, pixels);
     }
+    texture.resize({basic_width, basic_height}, true);
     /// Load the pixel data into the SFML texture. The 'true' argument sets sRgb for pixels color.
     if(!texture.loadFromImage(image, true)) {
         std::cerr << "Data corrupted!\n";
