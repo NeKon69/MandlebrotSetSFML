@@ -91,6 +91,7 @@ void FractalBase<fractals::julia>::render(
                 std::this_thread::sleep_for(THREAD_SLEEP_TIME);
             }
             post_processing();
+            std::cout << "Finished thread (Julia)!\n";
         });
         main_thread.detach();
         return;

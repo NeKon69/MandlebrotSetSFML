@@ -17,12 +17,17 @@
 /// and loads it as a module for execution. It runs the compilation in a separate thread.
 template <typename Derived>
 std::shared_future<std::string> FractalBase<Derived>::set_custom_formula(const std::string& formula) {
-
     /// Prevent starting a new compilation if one is already in progress.
-    if(is_compiling) {
+    if(is_compiling || !isCudaAvailable) {
         std::promise<std::string> promise;
-        promise.set_value("Compilation in progress, please wait.");
-        return promise.get_future();
+        if(is_compiling) {
+            promise.set_value("Compilation in progress, please wait.");
+            return promise.get_future();
+        }
+        else if(!isCudaAvailable) {
+            promise.set_value("NVIDIA GPU target is missing required for runtime formulas.");
+            return promise.get_future();
+        }
     }
     is_compiling = true;
     std::promise<std::string> p;
