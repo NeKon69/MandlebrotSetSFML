@@ -9,7 +9,10 @@ message(STATUS "--- CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE} ---")
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 17)
-set(CMAKE_CUDA_ARCHITECTURES "native")
+set(CMAKE_CUDA_ARCHITECTURES "75")
+set(CMAKE_CUDA_HOST_COMPILER "${CMAKE_CXX_COMPILER}")
+message(CUDA_HOST_COMPILER ": ${CMAKE_CUDA_HOST_COMPILER}")
+
 
 find_package(SFML 3 REQUIRED COMPONENTS Graphics Window System)
 find_package(TGUI 1 REQUIRED)
@@ -31,16 +34,17 @@ endif()
 
 # --- Source Files ---
 set(CPP_SOURCES
-        include/kernelCodeStr.h include/ClassImplementation/Macros.h src/main.cpp src/kernelCodeStr.cpp
-        include/ClassImplementation/JuliaTimelapse.h include/ClassImplementation/FractalInteraction.h
-        include/ClassImplementation/Fractals/MandelbrotRendering.cuh include/ClassImplementation/Fractals/JuliaRendering.cuh
-        include/ClassImplementation/CpuFallback.h include/ClassImplementation/CustomFormulaHandling.h
-        include/ClassImplementation/PaletteHandler.h include/ClassImplementation/IterationPath.h)
+        src/main.cpp
+        src/kernelCodeStr.cpp
+)
 
 set(CUDA_SOURCES
-        src/CUDA_ComputationFunctions.cu src/benchmark.cu src/fractals/mandelbrot.cu src/fractals/julia.cu
-        src/FractalClass.cu include/fractals/custom.cuh include/ClassImplementation/FractalClass.cuh
-        include/ClassImplementation/Processing.cu include/HardCodedVars.h)
+        src/CUDA_ComputationFunctions.cu
+        src/benchmark.cu
+        src/fractals/mandelbrot.cu
+        src/fractals/julia.cu
+        src/FractalClass.cu
+)
 
 add_executable(${PROJECT_NAME} ${CPP_SOURCES} ${CUDA_SOURCES})
 
@@ -56,19 +60,28 @@ target_include_directories(${PROJECT_NAME} PRIVATE
         ${PNG_INCLUDE_DIRS}
         ${BZIP2_INCLUDE_DIRS}
 )
-
 # --- Link Libraries (Direct Dependencies Only) ---
-target_link_libraries(${PROJECT_NAME} PRIVATE
-        SFML::Graphics SFML::Window SFML::System
-        TGUI::TGUI
-        CUDA::cudart CUDA::nvrtc CUDA::nvrtc_builtins CUDA::cuda_driver
-)
+if(WIN32)
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+            SFML::Graphics SFML::Window SFML::System
+            TGUI::TGUI
+            CUDA::cudart CUDA::nvrtc CUDA::cuda_driver
+    )
+else()
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+            SFML::Graphics SFML::Window SFML::System
+            TGUI::TGUI
+            CUDA::cudart CUDA::nvrtc CUDA::nvrtc_builtins CUDA::cuda_driver
+    )
+endif()
 
 # --- Target Properties ---
 set_target_properties(${PROJECT_NAME} PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON
         CUDA_RESOLVE_DEVICE_SYMBOLS ON
-        CUDA_RUNTIME_LIBRARY "Shared")
+        CUDA_RUNTIME_LIBRARY "Shared"
+        CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES}
+)
 
 # --- Compile Options ---
 target_compile_options(${PROJECT_NAME} PRIVATE
@@ -76,7 +89,8 @@ target_compile_options(${PROJECT_NAME} PRIVATE
         $<$<AND:$<CXX_COMPILER_ID:Clang>,$<CONFIG:Release>>:-O3 -ffast-math -march=native>
         $<$<CXX_COMPILER_ID:MSVC>:/W3 /MP /EHsc>
         $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Release>>:/Ox /fp:fast>
-        $<$<AND:$<CUDA_COMPILER_ID:NVIDIA>,$<CONFIG:Release>>:-O3 -use_fast_math>)
+        $<$<AND:$<CUDA_COMPILER_ID:NVIDIA>,$<CONFIG:Release>>:-O3 -use_fast_math>
+)
 
 # --- Runtime Resource Copying ---
 set(RUNTIME_OUTPUT_DIR $<TARGET_FILE_DIR:${PROJECT_NAME}>)
