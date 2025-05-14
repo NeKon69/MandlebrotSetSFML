@@ -54,17 +54,57 @@ _Screenshot of the dual-view demo application_
 
 ## What You Need to Run It
 
+The requirements depend on whether you are downloading a pre-built release or building the application yourself from the source code.
+
+### For Running a Pre-Built Release
+
+If you are downloading one of the ready-to-use archives from the [GitHub Releases page](https://github.com/NeKon69/MandlebrotSetSFML/releases), the requirements are much simpler:
+
+*   **Operating System:** Windows or Linux with a graphical interface.
 *   **Hardware:**
-    *   An **NVIDIA graphics card** with **Compute Capability 3.0 or higher**. The build process tries to automatically configure for your specific card. (If you don't have a compatible NVIDIA GPU, you can still run the CPU fallback, but performance will be limited, as well as features).
+    *   If downloading the **`-NVIDIA`** version: An **NVIDIA graphics card** with **Compute Capability 3.0 or higher** and the appropriate **NVIDIA drivers** installed. This version uses CUDA for acceleration.
+    *   If downloading the **`-CPU`** version: No specific GPU is required. This version uses the CPU fallback.
+*   **Software:** On Windows, you might need the **Microsoft Visual C++ Redistributable** package. This is often already installed on modern Windows systems.
+
+### For Building From Source (Advanced Users)
+
+If you intend to clone the repository and compile the application yourself, you will need the following software and potentially specific hardware:
+
+*   **Operating System:** Windows or Linux capable of running the build tools and supporting C++20 compilation.
+*   **Hardware:**
+    *   If building the **CUDA-accelerated** version: An **NVIDIA graphics card** with **Compute Capability 3.0 or higher**.
 *   **Software:**
-    *   The **NVIDIA CUDA Toolkit**. You'll need a version that works with your graphics card and your C++ compiler.
+    *   The **NVIDIA CUDA Toolkit**. You'll need a version that is compatible with your graphics card and your chosen C++ compiler.
     *   A modern C++ compiler that supports **C++20** features (like GCC, Clang, or MSVC).
-    *   **CMake** (Version 3.30 or newer).
-    *   **vcpkg**. This tool will download and set up the other libraries for you. You can find setup instructions [here](https://vcpkg.io/en/getting-started.html).
+    *   **CMake** (Version 3.30 or newer) to manage the build process.
+    *   **vcpkg** to download and set up external libraries (SFML, TGUI). You can find setup instructions [here](https://vcpkg.io/en/getting-started.html).
 
-## Getting Started (Building the Project)
+## Getting Started / Download & Build
 
-This project uses vcpkg to make setting up SFML and TGUI easy.
+There are two main ways to get the application: downloading a pre-built release or building it yourself from source.
+
+### For Regular Users (Downloading a Release)
+
+This is the easiest way to start exploring fractals without needing to set up a build environment.
+
+1.  Go to the **[GitHub Releases page](https://github.com/NeKon69/MandlebrotSetSFML/releases)** for this repository.
+2.  Look for the latest release. Under "Assets", you will find pre-built archives for different platforms and configurations.
+3.  **Choose the correct archive based on your operating system and hardware:**
+    *   Archives ending in `.rar` are typically for **Windows**.
+    *   Archives ending in `.tar.gz` are typically for **Linux**.
+    *   Look for `-NVIDIA` in the filename if you have a compatible NVIDIA GPU with appropriate drivers installed (recommended for full performance and features).
+    *   Look for `-CPU` in the filename if you do *not* have a compatible NVIDIA GPU. This version uses the CPU fallback and does not require CUDA.
+4.  Download the appropriate file.
+5.  Extract the contents of the downloaded archive using a suitable tool (e.g., WinRAR or 7-Zip on Windows, `tar -xzf` on Linux).
+6.  See the "Running the Application" section below for how to start the program after extraction.
+
+### For Advanced Users / Building from Source
+
+If you want the absolute latest code, need specific build configurations (like targeting a particular CUDA compute capability), or plan to contribute to the project, you can build the application yourself.
+
+You will need all the software listed in the "What You Need to Run It" section above.
+
+Follow these steps to build:
 
 1.  **Download the code:**
     ```bash
@@ -72,7 +112,7 @@ This project uses vcpkg to make setting up SFML and TGUI easy.
     cd MandlebrotSetSFML
     ```
 2.  **Tell CMake where to find vcpkg.** If you followed the vcpkg setup, you likely have a `vcpkg.cmake` file. You need to tell CMake where this file is.
-3.  **Prepare the build:** Use CMake to configure the project. Replace `<path_to_vcpkg>` with the actual location of your vcpkg installation.
+3.  **Prepare the build:** Use CMake to configure the project. Replace `<path_to_vcpkg>` with the actual location of your vcpkg installation. You can also add other CMake parameters here, such as `-DCUDA_ARCHITECTURES="<compute_capability>"` if you need to explicitly target a specific CUDA architecture instead of letting CMake detect it.
     ```bash
     # Example command (adjust path as needed)
     cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=<path_to_vcpkg>/scripts/buildsystems/vcpkg.cmake
@@ -83,18 +123,23 @@ This project uses vcpkg to make setting up SFML and TGUI easy.
     cmake --build build --config Release
     ```
     This step compiles all the C++ and CUDA code and creates the final program.
-
 ## Running the Application
 
-Once the build finishes successfully, you'll find the executable inside the `build` directory (it might be in a subdirectory like `build/Release` depending on your system and CMake generator). The necessary fonts and image files will be copied there automatically.
+How you run the application depends on whether you downloaded a pre-built release or built it from source.
+
+*   **If you downloaded a Release:** Navigate to the folder where you extracted the archive and double-click the executable file (e.g., `MandelbrotProject.exe` on Windows, or `MandelbrotProject` on Linux). The necessary assets (fonts, images) should be included in the extracted folder.
+
+*   **If you built from Source:** Once the build finishes successfully, you'll find the executable inside the `build` directory (it might be in a subdirectory like `build/Release` depending on your system and CMake generator). The necessary fonts and image files will be copied there automatically. Navigate to the build directory in your terminal:
 
 ```bash
 cd build
 # On Linux/macOS:
 ./MandelbrotProject
 # On Windows (if using Visual Studio build):
-.\Release\MandelbrotProject.exe
+cd Release
+.\MandelbrotProject.exe
 ```
+
 The application should open in a borderless window matching your desktop resolution.
 
 ## How to Use the Demo Application
