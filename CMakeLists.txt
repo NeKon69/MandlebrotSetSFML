@@ -32,18 +32,8 @@ endif()
 
 # --- Source Files ---
 set(CPP_SOURCES
-        include/kernelCodeStr.h
-        include/ClassImplementation/Macros.h
         src/main.cpp
         src/kernelCodeStr.cpp
-        include/ClassImplementation/JuliaTimelapse.h
-        include/ClassImplementation/FractalInteraction.h
-        include/ClassImplementation/Fractals/MandelbrotRendering.cuh
-        include/ClassImplementation/Fractals/JuliaRendering.cuh
-        include/ClassImplementation/CpuFallback.h
-        include/ClassImplementation/CustomFormulaHandling.h
-        include/ClassImplementation/PaletteHandler.h
-        include/ClassImplementation/IterationPath.h
 )
 
 set(CUDA_SOURCES
@@ -52,10 +42,6 @@ set(CUDA_SOURCES
         src/fractals/mandelbrot.cu
         src/fractals/julia.cu
         src/FractalClass.cu
-        include/fractals/custom.cuh
-        include/ClassImplementation/FractalClass.cuh
-        include/ClassImplementation/Processing.cu
-        include/HardCodedVars.h
 )
 
 add_executable(${PROJECT_NAME} ${CPP_SOURCES} ${CUDA_SOURCES})
