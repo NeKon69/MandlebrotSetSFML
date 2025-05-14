@@ -9,7 +9,7 @@ message(STATUS "--- CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE} ---")
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 17)
-set(CMAKE_CUDA_ARCHITECTURES "native")
+set(CMAKE_CUDA_ARCHITECTURES "75") # target specific CUDA architecture
 
 find_package(SFML 3 REQUIRED COMPONENTS Graphics Window System)
 find_package(TGUI 1 REQUIRED)
@@ -31,16 +31,31 @@ endif()
 
 # --- Source Files ---
 set(CPP_SOURCES
-        include/kernelCodeStr.h include/ClassImplementation/Macros.h src/main.cpp src/kernelCodeStr.cpp
-        include/ClassImplementation/JuliaTimelapse.h include/ClassImplementation/FractalInteraction.h
-        include/ClassImplementation/Fractals/MandelbrotRendering.cuh include/ClassImplementation/Fractals/JuliaRendering.cuh
-        include/ClassImplementation/CpuFallback.h include/ClassImplementation/CustomFormulaHandling.h
-        include/ClassImplementation/PaletteHandler.h include/ClassImplementation/IterationPath.h)
+        include/kernelCodeStr.h
+        include/ClassImplementation/Macros.h
+        src/main.cpp
+        src/kernelCodeStr.cpp
+        include/ClassImplementation/JuliaTimelapse.h
+        include/ClassImplementation/FractalInteraction.h
+        include/ClassImplementation/Fractals/MandelbrotRendering.cuh
+        include/ClassImplementation/Fractals/JuliaRendering.cuh
+        include/ClassImplementation/CpuFallback.h
+        include/ClassImplementation/CustomFormulaHandling.h
+        include/ClassImplementation/PaletteHandler.h
+        include/ClassImplementation/IterationPath.h
+)
 
 set(CUDA_SOURCES
-        src/CUDA_ComputationFunctions.cu src/benchmark.cu src/fractals/mandelbrot.cu src/fractals/julia.cu
-        src/FractalClass.cu include/fractals/custom.cuh include/ClassImplementation/FractalClass.cuh
-        include/ClassImplementation/Processing.cu include/HardCodedVars.h)
+        src/CUDA_ComputationFunctions.cu
+        src/benchmark.cu
+        src/fractals/mandelbrot.cu
+        src/fractals/julia.cu
+        src/FractalClass.cu
+        include/fractals/custom.cuh
+        include/ClassImplementation/FractalClass.cuh
+        include/ClassImplementation/Processing.cu
+        include/HardCodedVars.h
+)
 
 add_executable(${PROJECT_NAME} ${CPP_SOURCES} ${CUDA_SOURCES})
 
@@ -61,14 +76,16 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 target_link_libraries(${PROJECT_NAME} PRIVATE
         SFML::Graphics SFML::Window SFML::System
         TGUI::TGUI
-        CUDA::cudart CUDA::nvrtc CUDA::nvrtc_builtins CUDA::cuda_driver
+        CUDA::cudart CUDA::nvrtc CUDA::cuda_driver
 )
 
 # --- Target Properties ---
 set_target_properties(${PROJECT_NAME} PROPERTIES
-        CUDA_SEPARABLE_COMPILATION ON
+        CUDA_SEPARABLE_COMPILATION OFF
         CUDA_RESOLVE_DEVICE_SYMBOLS ON
-        CUDA_RUNTIME_LIBRARY "Shared")
+        CUDA_RUNTIME_LIBRARY "Shared"
+        CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES}  # Ensure this is set properly
+)
 
 # --- Compile Options ---
 target_compile_options(${PROJECT_NAME} PRIVATE
@@ -187,7 +204,7 @@ endfunction()
 set(LIBS_TO_COPY
         SFML::Graphics SFML::Window SFML::System
         TGUI::TGUI
-        CUDA::cudart CUDA::nvrtc CUDA::nvrtc_builtins CUDA::cuda_driver
+        CUDA::cudart CUDA::nvrtc CUDA::cuda_driver
         ZLIB::ZLIB
         freetype
         BZip2::BZip2
