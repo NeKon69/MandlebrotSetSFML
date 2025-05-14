@@ -9,7 +9,7 @@ std::string beginning_mandelbrot = R"(
 #include "custom.cuh"
 template <typename T>
 __global__ void fractal_rendering_mandelbrot(
-        unsigned char* pixels, unsigned long size_of_pixels, unsigned int width, unsigned int height,
+        unsigned char* pixels, size_t size_of_pixels, unsigned int width, unsigned int height,
         T zoom_x, T zoom_y, T x_offset, T y_offset,
         Color* d_palette, unsigned int paletteSize, T maxIterations, unsigned int* d_total_iterations)
 {
@@ -43,7 +43,7 @@ std::string beginning_julia = R"(
 #include "custom.cuh"
 template<typename T>
 __global__ void fractal_rendering_julia(
-        unsigned char* pixels, unsigned long size_of_pixels, unsigned int width, unsigned int height,
+        unsigned char* pixels, size_t size_of_pixels, unsigned int width, unsigned int height,
         T zoom_x, T zoom_y, T x_offset, T y_offset,
         Color* d_palette, unsigned int paletteSize, T maxIterations, unsigned int* d_total_iterations,
         T cReal, T cImaginary)
@@ -152,12 +152,12 @@ std::string ending = R"(
 std::string mandelbrot_predefined = R"(
 
 template __global__ void fractal_rendering_mandelbrot<float>(
-        unsigned char*, unsigned long, unsigned int, unsigned int,
+        unsigned char*, size_t, unsigned int, unsigned int,
         float, float, float, float,
         Color*, unsigned int, float, unsigned int*);
 
 template __global__ void fractal_rendering_mandelbrot<double>(
-        unsigned char*, unsigned long, unsigned int, unsigned int,
+        unsigned char*, size_t, unsigned int, unsigned int,
         double, double, double, double,
         Color*, unsigned int, double, unsigned int*);
 )";
@@ -165,12 +165,12 @@ template __global__ void fractal_rendering_mandelbrot<double>(
 std::string julia_predefined = R"(
 
 template __global__ void fractal_rendering_julia<float>(
-        unsigned char*, unsigned long, unsigned int, unsigned int,
+        unsigned char*, size_t, unsigned int, unsigned int,
         float, float, float, float,
         Color*, unsigned int, float, unsigned int*, float, float);
 
 template __global__ void fractal_rendering_julia<double>(
-        unsigned char*, unsigned long, unsigned int, unsigned int,
+        unsigned char*, size_t, unsigned int, unsigned int,
         double, double, double, double,
         Color*, unsigned int, double, unsigned int*, double, double);
 )";
