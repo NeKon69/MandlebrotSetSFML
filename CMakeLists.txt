@@ -10,6 +10,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_ARCHITECTURES "75")
+set(CMAKE_CUDA_HOST_COMPILER "${CMAKE_CXX_COMPILER}")
+message(CUDA_HOST_COMPILER ": ${CMAKE_CUDA_HOST_COMPILER}")
 
 
 find_package(SFML 3 REQUIRED COMPONENTS Graphics Window System)
@@ -76,11 +78,12 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 
 # --- Compile Options ---
 target_compile_options(${PROJECT_NAME} PRIVATE
-        $<$<AND:$<CXX_COMPILER_ID:GNU>,$<CONFIG:Release>>:-O3 -ffast-math -march=native>
-        $<$<AND:$<CXX_COMPILER_ID:Clang>,$<CONFIG:Release>>:-O3 -ffast-math -march=native>
-        $<$<CXX_COMPILER_ID:MSVC>:/W3 /MP /EHsc>
-        $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Release>>:/Ox /fp:fast>
-        $<$<AND:$<CUDA_COMPILER_ID:NVIDIA>,$<CONFIG:Release>>:-O3 -use_fast_math>)
+#        $<$<AND:$<CXX_COMPILER_ID:GNU>,$<CONFIG:Release>>:-O3 -ffast-math -march=native>
+#        $<$<AND:$<CXX_COMPILER_ID:Clang>,$<CONFIG:Release>>:-O3 -ffast-math -march=native>
+#        $<$<CXX_COMPILER_ID:MSVC>:/W3 /MP /EHsc>
+#        $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Release>>:/Ox /fp:fast>
+#        $<$<AND:$<CUDA_COMPILER_ID:NVIDIA>,$<CONFIG:Release>>:-O3 -use_fast_math>
+)
 
 # --- Runtime Resource Copying ---
 set(RUNTIME_OUTPUT_DIR $<TARGET_FILE_DIR:${PROJECT_NAME}>)
