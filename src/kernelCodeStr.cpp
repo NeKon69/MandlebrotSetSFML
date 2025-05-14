@@ -152,12 +152,12 @@ std::string ending = R"(
 std::string mandelbrot_predefined = R"(
 
 template __global__ void fractal_rendering_mandelbrot<float>(
-        unsigned char*, size_t, unsigned int, unsigned int,
+        unsigned char*, unsigned long, unsigned int, unsigned int,
         float, float, float, float,
         Color*, unsigned int, float, unsigned int*);
 
 template __global__ void fractal_rendering_mandelbrot<double>(
-        unsigned char*, size_t, unsigned int, unsigned int,
+        unsigned char*, unsigned long, unsigned int, unsigned int,
         double, double, double, double,
         Color*, unsigned int, double, unsigned int*);
 )";
@@ -165,12 +165,12 @@ template __global__ void fractal_rendering_mandelbrot<double>(
 std::string julia_predefined = R"(
 
 template __global__ void fractal_rendering_julia<float>(
-        unsigned char*, size_t, unsigned int, unsigned int,
+        unsigned char*, unsigned long, unsigned int, unsigned int,
         float, float, float, float,
         Color*, unsigned int, float, unsigned int*, float, float);
 
 template __global__ void fractal_rendering_julia<double>(
-        unsigned char*, size_t, unsigned int, unsigned int,
+        unsigned char*, unsigned long, unsigned int, unsigned int,
         double, double, double, double,
         Color*, unsigned int, double, unsigned int*, double, double);
 )";
