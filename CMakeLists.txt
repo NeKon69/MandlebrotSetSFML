@@ -81,7 +81,7 @@ target_compile_options(${PROJECT_NAME} PRIVATE
         $<$<AND:$<CXX_COMPILER_ID:GNU>,$<CONFIG:Release>>:-O3 -ffast-math -march=native>
         $<$<AND:$<CXX_COMPILER_ID:Clang>,$<CONFIG:Release>>:-O3 -ffast-math -march=native>
         $<$<CXX_COMPILER_ID:MSVC>:/W3 /MP /EHsc>
-        $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Release>>:/Ox /fp:fast>
+#        $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Release>>:/Ox /fp:fast>
 #        $<$<AND:$<CUDA_COMPILER_ID:NVIDIA>,$<CONFIG:Release>>:-O3 -use_fast_math>
 )
 
