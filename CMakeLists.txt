@@ -68,10 +68,10 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 
 # --- Target Properties ---
 set_target_properties(${PROJECT_NAME} PROPERTIES
-        CUDA_SEPARABLE_COMPILATION OFF
+        CUDA_SEPARABLE_COMPILATION ON
         CUDA_RESOLVE_DEVICE_SYMBOLS ON
         CUDA_RUNTIME_LIBRARY "Shared"
-        CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES}  # Ensure this is set properly
+        CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES}
 )
 
 # --- Compile Options ---
